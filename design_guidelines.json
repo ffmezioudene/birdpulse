@@ -1,0 +1,263 @@
+{
+  "theme": {
+    "name": "Dark Cinematic Premium",
+    "archetypes": ["Archetype 5: Luxury", "Archetype 1: Organic & Earthy"],
+    "mode": "dark",
+    "description": "A premium, iOS-style bird identification app with a cinematic, nature-focused aesthetic. Features deep charcoal backgrounds, organic botanical accents, soft glows, and full-bleed high-definition photography."
+  },
+  "colors": {
+    "background": {
+      "primary": "#0E0F0D",
+      "secondary": "#141613",
+      "tertiary": "#1B1E1A"
+    },
+    "surface": {
+      "card": "#1B1E1A",
+      "overlay": "rgba(14, 15, 13, 0.6)",
+      "gradient_vignette": "linear-gradient(to bottom, rgba(14,15,13,0) 0%, rgba(14,15,13,0.9) 100%)"
+    },
+    "border": {
+      "hairline": "rgba(255, 255, 255, 0.08)"
+    },
+    "brand": {
+      "primary": "#7BA05B",
+      "secondary": "#E0A458"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "rgba(255, 255, 255, 0.65)",
+      "tertiary": "rgba(255, 255, 255, 0.4)",
+      "accent": "#7BA05B",
+      "highlight": "#E0A458"
+    },
+    "glows": {
+      "primary_glow": "rgba(123, 160, 91, 0.3)",
+      "secondary_glow": "rgba(224, 164, 88, 0.25)"
+    }
+  },
+  "typography": {
+    "font_family": {
+      "heading": "Plus Jakarta Sans, sans-serif",
+      "body": "Plus Jakarta Sans, sans-serif"
+    },
+    "scale": {
+      "h1": {
+        "size": 40,
+        "line_height": 48,
+        "weight": "800",
+        "letter_spacing": -1.5
+      },
+      "h2": {
+        "size": 32,
+        "line_height": 40,
+        "weight": "700",
+        "letter_spacing": -1
+      },
+      "h3": {
+        "size": 24,
+        "line_height": 32,
+        "weight": "700",
+        "letter_spacing": -0.5
+      },
+      "body_lg": {
+        "size": 17,
+        "line_height": 26,
+        "weight": "500",
+        "letter_spacing": -0.2
+      },
+      "body": {
+        "size": 16,
+        "line_height": 24,
+        "weight": "400",
+        "letter_spacing": 0
+      },
+      "body_sm": {
+        "size": 14,
+        "line_height": 20,
+        "weight": "400",
+        "letter_spacing": 0
+      },
+      "caption": {
+        "size": 12,
+        "line_height": 16,
+        "weight": "500",
+        "letter_spacing": 0.5,
+        "text_transform": "uppercase"
+      }
+    }
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "xxl": 48,
+    "section": 64
+  },
+  "radii": {
+    "pill": 9999,
+    "button": 16,
+    "card": 24,
+    "modal": 32
+  },
+  "components": {
+    "bottom_nav": {
+      "background": "rgba(27, 30, 26, 0.85)",
+      "backdrop_blur": 20,
+      "border_top": "1px solid rgba(255, 255, 255, 0.08)",
+      "fab": {
+        "position": "center_elevated",
+        "shape": "circle",
+        "background": "#7BA05B",
+        "shadow": "0px 8px 32px rgba(123, 160, 91, 0.4)"
+      }
+    },
+    "cards": {
+      "background": "#1B1E1A",
+      "border": "1px solid rgba(255, 255, 255, 0.08)",
+      "border_radius": 24,
+      "overflow": "hidden"
+    },
+    "buttons": {
+      "primary": {
+        "background": "#7BA05B",
+        "text": "#FFFFFF",
+        "border_radius": 16,
+        "padding": "16px 24px"
+      },
+      "secondary": {
+        "background": "transparent",
+        "border": "1px solid rgba(255, 255, 255, 0.15)",
+        "text": "#FFFFFF",
+        "border_radius": 16,
+        "padding": "16px 24px"
+      },
+      "premium": {
+        "background": "#E0A458",
+        "text": "#0E0F0D",
+        "border_radius": 16,
+        "padding": "16px 24px",
+        "shadow": "0px 8px 32px rgba(224, 164, 88, 0.3)"
+      }
+    },
+    "chips": {
+      "background": "rgba(255, 255, 255, 0.1)",
+      "text": "#FFFFFF",
+      "border_radius": 9999,
+      "padding": "8px 16px"
+    },
+    "premium_paywall": {
+      "overlay_gradient": "linear-gradient(180deg, rgba(14,15,13,0.2) 0%, rgba(14,15,13,0.95) 70%, #0E0F0D 100%)",
+      "badge": {
+        "background": "#E0A458",
+        "text": "#0E0F0D",
+        "text_transform": "uppercase"
+      }
+    },
+    "identify_flow": {
+      "shimmer_color": "#7BA05B",
+      "radar_glow": "rgba(123, 160, 91, 0.5)",
+      "confidence_meter": "#7BA05B"
+    }
+  },
+  "motion": {
+    "spring": {
+      "damping": 20,
+      "stiffness": 200,
+      "mass": 1
+    },
+    "transitions": {
+      "fast": "0.2s ease",
+      "medium": "0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+      "slow": "0.8s cubic-bezier(0.16, 1, 0.3, 1)"
+    }
+  },
+  "media_urls": {
+    "hero_carousel": [
+      {
+        "url": "https://images.unsplash.com/photo-1744959055063-b217124d3429?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxjaW5lbWF0aWMlMjBvd2x8ZW58MHx8fHwxNzc5NjI4MjYwfDA&ixlib=rb-4.1.0&q=85",
+        "alt": "Majestic Barn Owl on branch",
+        "description": "Used for hero carousel item 1"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1747107187735-06e1d2d92b87?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHwyfHxlYWdsZSUyMGNpbmVtYXRpY3xlbnwwfHx8fDE3Nzk2MjgyNjB8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Bald Eagle close up",
+        "description": "Used for hero carousel item 2"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1739408269475-b203dace5527?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MTN8MHwxfHNlYXJjaHwzfHxjYXJkaW5hbCUyMGJpcmQlMjBkYXJrfGVufDB8fHx8MTc3OTYyODI2MHww&ixlib=rb-4.1.0&q=85",
+        "alt": "Red Cardinal perched",
+        "description": "Used for hero carousel item 3"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1635604133914-e68aa11e99a5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwxfHxodW1taW5nYmlyZCUyMGZseWluZ3xlbnwwfHx8fDE3Nzk2MjgyNjB8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Hummingbird mid-flight",
+        "description": "Used for hero carousel item 4"
+      }
+    ],
+    "onboarding_backgrounds": [
+      {
+        "url": "https://images.pexels.com/photos/14293820/pexels-photo-14293820.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "Golden Eagle soaring in dark forest",
+        "description": "Onboarding Slide 1"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1593192925523-55b6bd063795?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MTN8MHwxfHNlYXJjaHwyfHxjYXJkaW5hbCUyMGJpcmQlMjBkYXJrfGVufDB8fHx8MTc3OTYyODI2MHww&ixlib=rb-4.1.0&q=85",
+        "alt": "Dark nature with Cardinal",
+        "description": "Onboarding Slide 2"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1520638023360-6def43369781?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwyfHxodW1taW5nYmlyZCUyMGZseWluZ3xlbnwwfHx8fDE3Nzk2MjgyNjB8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Hummingbird near flower",
+        "description": "Onboarding Slide 3"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1612095395498-5e2f3ae4d9a9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwyfHxibHVlJTIwamF5JTIwYmlyZHxlbnwwfHx8fDE3Nzk2MjgyNjB8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Blue Jay on dark branch",
+        "description": "Onboarding Slide 4"
+      },
+      {
+        "url": "https://images.pexels.com/photos/30363520/pexels-photo-30363520.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "Eurasian Eagle-Owl close up",
+        "description": "Onboarding Slide 5"
+      }
+    ],
+    "paywall": {
+      "background_image": "https://images.pexels.com/photos/29082522/pexels-photo-29082522.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Premium majestic owl looking directly at camera, used as full-bleed paywall background."
+    },
+    "mascots": {
+      "owl_assistant": "https://images.unsplash.com/photo-1720210534279-ac8c50a53e82?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwyfHxjaW5lbWF0aWMlMjBvd2x8ZW58MHx8fHwxNzc5NjI4MjYwfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Small perched owl used as avatar for the AI chat assistant"
+    },
+    "categories": {
+      "Songbirds": "https://images.unsplash.com/photo-1612095395498-5e2f3ae4d9a9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwyfHxibHVlJTIwamF5JTIwYmlyZHxlbnwwfHx8fDE3Nzk2MjgyNjB8MA&ixlib=rb-4.1.0&q=85",
+      "Birds_of_Prey": "https://images.pexels.com/photos/33349105/pexels-photo-33349105.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "Hummingbirds": "https://images.unsplash.com/photo-1596386447478-d71f5f8fea87?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHw0fHxodW1taW5nYmlyZCUyMGZseWluZ3xlbnwwfHx8fDE3Nzk2MjgyNjB8MA&ixlib=rb-4.1.0&q=85",
+      "Waterfowl": "https://images.unsplash.com/photo-1715560016731-65dd8dba2819?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwyfHxtYWxsYXJkJTIwZHVja3xlbnwwfHx8fDE3Nzk2MjgyNjB8MA&ixlib=rb-4.1.0&q=85"
+    },
+    "thumbnails": {
+      "Northern_Cardinal": "https://images.unsplash.com/photo-1511876484235-b5246a4d6dd5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MTN8MHwxfHNlYXJjaHwxfHxjYXJkaW5hbCUyMGJpcmQlMjBkYXJrfGVufDB8fHx8MTc3OTYyODI2MHww&ixlib=rb-4.1.0&q=85",
+      "Blue_Jay": "https://images.pexels.com/photos/32715552/pexels-photo-32715552.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "Bald_Eagle": "https://images.unsplash.com/photo-1747107187735-06e1d2d92b87?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHwyfHxlYWdsZSUyMGNpbmVtYXRpY3xlbnwwfHx8fDE3Nzk2MjgyNjB8MA&ixlib=rb-4.1.0&q=85",
+      "Mallard_Duck": "https://images.unsplash.com/photo-1585533530535-2f4236949d08?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwxfHxtYWxsYXJkJTIwZHVja3xlbnwwfHx8fDE3Nzk2MjgyNjB8MA&ixlib=rb-4.1.0&q=85",
+      "Ruby_throated_Hummingbird": "https://images.unsplash.com/photo-1596117803277-6142bb2ae8ef?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwzfHxodW1taW5nYmlyZCUyMGZseWluZ3xlbnwwfHx8fDE3Nzk2MjgyNjB8MA&ixlib=rb-4.1.0&q=85"
+    },
+    "landscapes": {
+      "range_map_background": "https://images.pexels.com/photos/29223512/pexels-photo-29223512.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "forest_bg": "https://images.unsplash.com/photo-1569402928543-87a35efc0606?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwyfHxkYXJrJTIwZm9yZXN0JTIwbGFuZHNjYXBlfGVufDB8fHx8MTc3OTYyODI2MHww&ixlib=rb-4.1.0&q=85",
+      "description": "Backgrounds for hotspots, range maps, and deep contextual screens."
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the color palette provided. Do not use generic grey or black. Stick to the deep charcoal shades and precise botanical green/amber hex codes.",
+    "Implement the UI for React Native with Expo. Ensure gradients (e.g., using expo-linear-gradient) over images fade smoothly into the background colors.",
+    "The 'Identify' button in the bottom navigation should be a raised, fully circular Floating Action Button (FAB) anchored to the center.",
+    "For the paywall, the background image MUST take the full screen width and height. Use a dark linear gradient overlay from the bottom to ensure text readability.",
+    "Never use generic placeholder images. Map the specific URLs under 'media_urls' directly to the respective components.",
+    "On bird detail views, use a full-bleed top hero image that fades elegantly into the background color.",
+    "Emphasize soft, colored glows behind primary interactive elements instead of harsh drop shadows. Use the provided glow colors in the 'glows' object.",
+    "All interactive elements MUST have a data-testid attribute in kebab-case format."
+  ]
+}
