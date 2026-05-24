@@ -1,30 +1,32 @@
-import { Text, View, StyleSheet, Image } from "react-native";
+import { useEffect } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { storage } from '@/src/utils/storage';
+import { KEYS } from '@/src/lib/state';
+import { colors } from '@/src/theme';
 
-export default function Index() {
-  console.log(EXPO_PUBLIC_BACKEND_URL, "EXPO_PUBLIC_BACKEND_URL");
+export default function Boot() {
+  const router = useRouter();
+
+  useEffect(() => {
+    (async () => {
+      const done = await storage.getItem<boolean>(KEYS.onboardingDone, false);
+      if (!done) {
+        router.replace('/onboarding');
+        return;
+      }
+      router.replace('/(tabs)');
+    })();
+  }, [router]);
 
   return (
-    <View style={styles.container}>
-      <Image
-        source={require("../assets/images/app-image.png")}
-        style={styles.image}
-      />
+    <View style={styles.container} testID="boot-screen">
+      <ActivityIndicator color={colors.primary} size="large" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0c0c0c",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "contain",
-  },
+  container: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
 });

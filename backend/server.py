@@ -1,58 +1,534 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import json
+import re
+import tempfile
+import base64
+import uuid
+import httpx
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import List
-import uuid
-from datetime import datetime
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timezone
+
+from emergentintegrations.llm.chat import (
+    LlmChat,
+    UserMessage,
+    ImageContent,
+    FileContentWithMimeType,
+)
 
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / ".env")
 
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[os.environ["DB_NAME"]]
 
-# Create the main app without a prefix
-app = FastAPI()
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+LLM_KEY = OPENAI_API_KEY or EMERGENT_LLM_KEY
 
-# Create a router with the /api prefix
+VISION_MODEL_PROVIDER = "openai"
+VISION_MODEL_NAME = "gpt-4o"
+CHAT_MODEL_PROVIDER = "openai"
+CHAT_MODEL_NAME = "gpt-4o"
+
+app = FastAPI(title="BirdLens API")
 api_router = APIRouter(prefix="/api")
 
 
-# Define Models
-class StatusCheck(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+# ---------------------------- Models ----------------------------
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+class IdentifyPhotoRequest(BaseModel):
+    image_base64: str  # raw base64 (no data URI prefix expected, but tolerated)
+    mime_type: Optional[str] = "image/jpeg"
 
-# Add your routes to the router instead of directly to app
+
+class IdentifyAlternative(BaseModel):
+    commonName: str
+    confidence: int
+
+
+class IdentifyResult(BaseModel):
+    commonName: str
+    scientificName: str
+    confidence: int
+    alternatives: List[IdentifyAlternative] = []
+    shortDescription: str = ""
+    habitat: str = ""
+    diet: str = ""
+    size: str = ""
+    funFacts: List[str] = []
+    rangeSummary: str = ""
+    conservationStatus: str = ""
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    session_id: Optional[str] = None
+    message: str
+
+
+class ChatResponse(BaseModel):
+    session_id: str
+    reply: str
+
+
+class XenoCantoRecording(BaseModel):
+    id: str
+    species: str
+    location: str
+    quality: str
+    audio_url: str
+
+
+# ---------------------------- Helpers ----------------------------
+
+IDENTIFY_SYSTEM_PROMPT = (
+    "You are an expert ornithologist. Identify the bird in the provided image. "
+    "Return ONLY valid JSON matching this exact schema, with NO markdown fences, NO preamble, NO trailing text:\n"
+    "{\n"
+    '  "commonName": str,\n'
+    '  "scientificName": str,\n'
+    '  "confidence": int (0-100),\n'
+    '  "alternatives": [{"commonName": str, "confidence": int}, ...] (0-3 entries),\n'
+    '  "shortDescription": str (2-3 sentences),\n'
+    '  "habitat": str,\n'
+    '  "diet": str,\n'
+    '  "size": str,\n'
+    '  "funFacts": [str, str, str],\n'
+    '  "rangeSummary": str,\n'
+    '  "conservationStatus": str\n'
+    "}\n"
+    "If you cannot detect a bird, return commonName 'Unknown' with confidence 0 and a brief description explaining no bird was detected. "
+    "If uncertain between species, lower the confidence and add alternatives. NEVER include backticks or markdown."
+)
+
+OWL_SYSTEM_PROMPT = (
+    "You are Wise, a friendly, knowledgeable owl bird-expert assistant inside the BirdLens app. "
+    "Help users identify birds from descriptions, explain bird behavior, suggest how to attract birds, "
+    "and answer nature questions warmly and concisely. Keep replies under 120 words unless asked for depth. "
+    "Use a warm, encouraging tone. Avoid emojis unless the user uses them first."
+)
+
+
+def _strip_b64_prefix(s: str) -> str:
+    if s.startswith("data:"):
+        return s.split(",", 1)[-1]
+    return s
+
+
+def _extract_json(text: str) -> Dict[str, Any]:
+    """Extract the first JSON object from a string (handles accidental fences)."""
+    cleaned = text.strip()
+    # Strip fenced code blocks
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?", "", cleaned).strip()
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3].strip()
+    # Find first { ... last }
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start == -1 or end == -1:
+        raise ValueError("No JSON object found in model response")
+    return json.loads(cleaned[start : end + 1])
+
+
+# ---------------------------- Routes ----------------------------
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"status": "ok", "service": "BirdLens API"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.dict()
-    status_obj = StatusCheck(**status_dict)
-    _ = await db.status_checks.insert_one(status_obj.dict())
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    status_checks = await db.status_checks.find().to_list(1000)
-    return [StatusCheck(**status_check) for status_check in status_checks]
+@api_router.get("/health")
+async def health():
+    return {
+        "status": "ok",
+        "has_llm_key": bool(LLM_KEY),
+        "uses_emergent_key": bool(EMERGENT_LLM_KEY and not OPENAI_API_KEY),
+    }
 
-# Include the router in the main app
+
+@api_router.post("/identify/photo", response_model=IdentifyResult)
+async def identify_photo(req: IdentifyPhotoRequest):
+    if not LLM_KEY:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    b64 = _strip_b64_prefix(req.image_base64)
+    if not b64:
+        raise HTTPException(status_code=400, detail="image_base64 is required")
+
+    session_id = f"identify-{uuid.uuid4()}"
+    chat = LlmChat(
+        api_key=LLM_KEY,
+        session_id=session_id,
+        system_message=IDENTIFY_SYSTEM_PROMPT,
+    ).with_model(VISION_MODEL_PROVIDER, VISION_MODEL_NAME)
+
+    image_content = ImageContent(image_base64=b64)
+    user_message = UserMessage(
+        text="Identify the bird in this photo. Return ONLY the JSON object as specified.",
+        file_contents=[image_content],
+    )
+
+    try:
+        raw = await chat.send_message(user_message)
+    except Exception as e:
+        logger.exception("Vision call failed")
+        raise HTTPException(status_code=502, detail=f"Vision model error: {e}")
+
+    try:
+        data = _extract_json(raw)
+    except Exception:
+        logger.warning("Failed to parse JSON. Raw: %s", raw[:400])
+        raise HTTPException(status_code=502, detail="Model did not return valid JSON")
+
+    # Normalize confidence to int
+    try:
+        data["confidence"] = int(round(float(data.get("confidence", 0))))
+    except Exception:
+        data["confidence"] = 0
+    data.setdefault("alternatives", [])
+    for alt in data["alternatives"]:
+        try:
+            alt["confidence"] = int(round(float(alt.get("confidence", 0))))
+        except Exception:
+            alt["confidence"] = 0
+
+    # Persist history entry (no _id leakage)
+    history_doc = {
+        "id": str(uuid.uuid4()),
+        "type": "photo",
+        "result": data,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        await db.identifications.insert_one(history_doc)
+    except Exception:
+        pass
+
+    return IdentifyResult(**data)
+
+
+@api_router.post("/identify/sound", response_model=IdentifyResult)
+async def identify_sound(req: IdentifyPhotoRequest):
+    """Sound ID fallback: client sends a spectrogram image (base64) of the audio.
+    Uses GPT-4o Vision on the spectrogram as a stand-in for BirdNET."""
+    if not LLM_KEY:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    b64 = _strip_b64_prefix(req.image_base64)
+    if not b64:
+        raise HTTPException(status_code=400, detail="image_base64 (spectrogram) is required")
+
+    sound_prompt = (
+        IDENTIFY_SYSTEM_PROMPT
+        + "\nThe image is a SPECTROGRAM of a bird call recording. Identify the most likely species from the "
+        "spectrogram patterns (frequency, duration, syllable structure). Lower confidence accordingly."
+    )
+    session_id = f"sound-{uuid.uuid4()}"
+    chat = LlmChat(
+        api_key=LLM_KEY,
+        session_id=session_id,
+        system_message=sound_prompt,
+    ).with_model(VISION_MODEL_PROVIDER, VISION_MODEL_NAME)
+
+    image_content = ImageContent(image_base64=b64)
+    user_message = UserMessage(
+        text="Identify the bird from this spectrogram. Return ONLY the JSON object.",
+        file_contents=[image_content],
+    )
+
+    try:
+        raw = await chat.send_message(user_message)
+        data = _extract_json(raw)
+    except Exception as e:
+        logger.exception("Sound ID failed")
+        raise HTTPException(status_code=502, detail=f"Sound ID error: {e}")
+
+    try:
+        data["confidence"] = int(round(float(data.get("confidence", 0))))
+    except Exception:
+        data["confidence"] = 0
+    data.setdefault("alternatives", [])
+
+    return IdentifyResult(**data)
+
+
+@api_router.post("/chat", response_model=ChatResponse)
+async def chat_endpoint(req: ChatRequest):
+    if not LLM_KEY:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+    if not req.message.strip():
+        raise HTTPException(status_code=400, detail="message is required")
+
+    session_id = req.session_id or str(uuid.uuid4())
+
+    # Pull prior turns for this session for multi-turn context
+    prior = (
+        await db.chat_messages.find(
+            {"session_id": session_id}, {"_id": 0}
+        )
+        .sort("created_at", 1)
+        .to_list(50)
+    )
+
+    # Build context-aware system prompt with history summary
+    history_text = ""
+    if prior:
+        history_text = "\n\nPrior conversation:\n" + "\n".join(
+            f"{m['role'].upper()}: {m['content']}" for m in prior[-10:]
+        )
+
+    chat = LlmChat(
+        api_key=LLM_KEY,
+        session_id=session_id,
+        system_message=OWL_SYSTEM_PROMPT + history_text,
+    ).with_model(CHAT_MODEL_PROVIDER, CHAT_MODEL_NAME)
+
+    try:
+        reply = await chat.send_message(UserMessage(text=req.message))
+    except Exception as e:
+        logger.exception("Chat call failed")
+        raise HTTPException(status_code=502, detail=f"Chat error: {e}")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.chat_messages.insert_one(
+        {"session_id": session_id, "role": "user", "content": req.message, "created_at": now}
+    )
+    await db.chat_messages.insert_one(
+        {"session_id": session_id, "role": "assistant", "content": reply, "created_at": now}
+    )
+
+    return ChatResponse(session_id=session_id, reply=reply)
+
+
+@api_router.get("/xenocanto")
+async def xenocanto(species: str, limit: int = 3):
+    """Proxy xeno-canto API for bird call recordings.
+
+    v3 requires an API key. If XENO_CANTO_KEY is set in env we use v3; otherwise
+    we return an empty list so the UI degrades gracefully.
+    """
+    if not species:
+        raise HTTPException(status_code=400, detail="species query is required")
+
+    key = os.environ.get("XENO_CANTO_KEY", "")
+    if not key:
+        return {"recordings": [], "note": "Set XENO_CANTO_KEY in backend/.env to enable bird call recordings."}
+
+    url = "https://xeno-canto.org/api/3/recordings"
+    # v3 requires a tag; treat the input as English common name
+    params = {"query": f'en:"{species}"', "key": key, "per_page": limit}
+    try:
+        async with httpx.AsyncClient(timeout=15) as http:
+            r = await http.get(url, params=params)
+            r.raise_for_status()
+            data = r.json()
+    except Exception as e:
+        logger.warning("xeno-canto failed: %s", e)
+        return {"recordings": []}
+
+    recs = data.get("recordings", [])[:limit]
+    out = []
+    for rec in recs:
+        audio = rec.get("file")
+        if audio and not audio.startswith("http"):
+            audio = "https:" + audio
+        out.append(
+            {
+                "id": rec.get("id", ""),
+                "species": f"{rec.get('gen','')} {rec.get('sp','')}".strip(),
+                "common_name": rec.get("en", ""),
+                "location": rec.get("loc", ""),
+                "country": rec.get("cnt", ""),
+                "quality": rec.get("q", ""),
+                "length": rec.get("length", ""),
+                "audio_url": audio or "",
+            }
+        )
+    return {"recordings": out}
+
+
+@api_router.get("/birds/catalog")
+async def birds_catalog():
+    """Static seed catalog of popular birds for Home/Detail."""
+    return {"birds": SEED_BIRDS}
+
+
+@api_router.get("/birds/{bird_id}")
+async def bird_detail(bird_id: str):
+    for b in SEED_BIRDS:
+        if b["id"] == bird_id:
+            return b
+    raise HTTPException(status_code=404, detail="Bird not found")
+
+
+# ---------------------------- Seed catalog ----------------------------
+
+SEED_BIRDS = [
+    {
+        "id": "northern-cardinal",
+        "commonName": "Northern Cardinal",
+        "scientificName": "Cardinalis cardinalis",
+        "category": "Songbirds",
+        "image": "https://images.unsplash.com/photo-1511876484235-b5246a4d6dd5?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "shortDescription": "A vivid red songbird with a prominent crest and black face mask. Males are brilliant red; females warm tawny brown with red accents.",
+        "habitat": "Woodland edges, gardens, shrublands across eastern and central North America.",
+        "diet": "Seeds, grains, fruits, and insects.",
+        "size": "21–23 cm",
+        "funFacts": [
+            "Both males and females sing — uncommon among North American songbirds.",
+            "Cardinals mate for life and stay together year-round.",
+            "Their crest raises when alarmed or excited.",
+        ],
+        "rangeSummary": "Eastern and central United States, Mexico, year-round resident.",
+        "conservationStatus": "Least Concern",
+    },
+    {
+        "id": "blue-jay",
+        "commonName": "Blue Jay",
+        "scientificName": "Cyanocitta cristata",
+        "category": "Songbirds",
+        "image": "https://images.pexels.com/photos/32715552/pexels-photo-32715552.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "shortDescription": "Striking blue, white, and black corvid known for its intelligence and bold personality.",
+        "habitat": "Forests, parks, and suburban yards across eastern and central North America.",
+        "diet": "Nuts, seeds, insects, and occasionally small vertebrates.",
+        "size": "25–30 cm",
+        "funFacts": [
+            "Blue Jays can mimic hawk calls to scare off other birds.",
+            "Their blue color comes from light refraction, not pigment.",
+            "They cache acorns and help oak forests regenerate.",
+        ],
+        "rangeSummary": "Eastern and central US and Canada, year-round resident.",
+        "conservationStatus": "Least Concern",
+    },
+    {
+        "id": "bald-eagle",
+        "commonName": "Bald Eagle",
+        "scientificName": "Haliaeetus leucocephalus",
+        "category": "Birds of Prey",
+        "image": "https://images.unsplash.com/photo-1747107187735-06e1d2d92b87?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "shortDescription": "America's national bird — a massive raptor with a white head, dark brown body, and powerful yellow beak.",
+        "habitat": "Near large bodies of water across North America.",
+        "diet": "Primarily fish, but also waterfowl and carrion.",
+        "size": "70–102 cm; wingspan 1.8–2.3 m",
+        "funFacts": [
+            "Bald Eagles can dive at speeds up to 100 mph.",
+            "Nests can weigh over a ton and be reused for decades.",
+            "Removed from US endangered list in 2007 after dramatic recovery.",
+        ],
+        "rangeSummary": "Across most of North America; coastal and inland waterways.",
+        "conservationStatus": "Least Concern",
+    },
+    {
+        "id": "mallard-duck",
+        "commonName": "Mallard",
+        "scientificName": "Anas platyrhynchos",
+        "category": "Waterfowl",
+        "image": "https://images.unsplash.com/photo-1585533530535-2f4236949d08?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "shortDescription": "The most familiar dabbling duck — males display an iridescent green head and white neck ring.",
+        "habitat": "Ponds, lakes, rivers, and wetlands worldwide.",
+        "diet": "Aquatic plants, seeds, insects, and small crustaceans.",
+        "size": "50–65 cm",
+        "funFacts": [
+            "Almost all domestic ducks descend from Mallards.",
+            "They can fly up to 55 mph during migration.",
+            "Female Mallards say 'quack'; males make a softer, raspier call.",
+        ],
+        "rangeSummary": "Throughout North America, Europe, and Asia.",
+        "conservationStatus": "Least Concern",
+    },
+    {
+        "id": "ruby-throated-hummingbird",
+        "commonName": "Ruby-throated Hummingbird",
+        "scientificName": "Archilochus colubris",
+        "category": "Hummingbirds",
+        "image": "https://images.unsplash.com/photo-1596117803277-6142bb2ae8ef?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "shortDescription": "A tiny, dazzling hummingbird — males flash a brilliant ruby throat in sunlight.",
+        "habitat": "Gardens, woodland edges, and parks across eastern North America.",
+        "diet": "Flower nectar, tree sap, and small insects.",
+        "size": "7–9 cm",
+        "funFacts": [
+            "They beat their wings 53 times per second.",
+            "Some cross the Gulf of Mexico nonstop — 800 km in 18–22 hours.",
+            "Their hearts can beat over 1,200 times per minute.",
+        ],
+        "rangeSummary": "Eastern North America in summer; Central America in winter.",
+        "conservationStatus": "Least Concern",
+    },
+    {
+        "id": "american-robin",
+        "commonName": "American Robin",
+        "scientificName": "Turdus migratorius",
+        "category": "Songbirds",
+        "image": "https://images.unsplash.com/photo-1592333281587-d57aaeacdc55?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "shortDescription": "A familiar large thrush with a warm orange breast and gray-brown back — herald of spring.",
+        "habitat": "Lawns, gardens, woodlands, and parks across North America.",
+        "diet": "Earthworms, insects, and fruit.",
+        "size": "23–28 cm",
+        "funFacts": [
+            "Robins often run, stop, and tilt their heads to spot worms.",
+            "They can produce up to three broods per year.",
+            "Their distinctive song is one of the earliest at dawn chorus.",
+        ],
+        "rangeSummary": "Across North America; northern populations migrate.",
+        "conservationStatus": "Least Concern",
+    },
+    {
+        "id": "black-capped-chickadee",
+        "commonName": "Black-capped Chickadee",
+        "scientificName": "Poecile atricapillus",
+        "category": "Songbirds",
+        "image": "https://images.unsplash.com/photo-1604326531570-2689ea7ec73f?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "shortDescription": "A tiny, curious bird with a black cap and bib, white cheeks, and a buffy belly.",
+        "habitat": "Mixed and deciduous forests, parks, and feeders in northern North America.",
+        "diet": "Insects, seeds, and berries.",
+        "size": "12–15 cm",
+        "funFacts": [
+            "Their 'chick-a-dee' call adds 'dee' notes based on threat level.",
+            "They can remember thousands of food cache locations.",
+            "They lower their body temperature at night to conserve energy.",
+        ],
+        "rangeSummary": "Northern US and Canada, year-round.",
+        "conservationStatus": "Least Concern",
+    },
+    {
+        "id": "great-horned-owl",
+        "commonName": "Great Horned Owl",
+        "scientificName": "Bubo virginianus",
+        "category": "Birds of Prey",
+        "image": "https://images.unsplash.com/photo-1744959055063-b217124d3429?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "shortDescription": "A powerful nocturnal raptor with prominent ear tufts and piercing yellow eyes.",
+        "habitat": "Forests, deserts, swamps, and city parks across the Americas.",
+        "diet": "Mammals, birds, reptiles — even skunks and porcupines.",
+        "size": "46–63 cm; wingspan 1–1.5 m",
+        "funFacts": [
+            "Their grip strength is roughly 500 psi — far stronger than a human hand.",
+            "They have asymmetrical ear openings to pinpoint prey in the dark.",
+            "They are one of the earliest nesting birds, often starting in January.",
+        ],
+        "rangeSummary": "Throughout the Americas, year-round.",
+        "conservationStatus": "Least Concern",
+    },
+]
+
+
+# ---------------------------- App wiring ----------------------------
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -63,12 +539,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
