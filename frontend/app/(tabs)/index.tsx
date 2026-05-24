@@ -50,7 +50,7 @@ export default function Home() {
     <View style={styles.root} testID="home-screen">
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <ScrollView
-          contentContainerStyle={{ paddingBottom: 140 }}
+          contentContainerStyle={{ paddingBottom: 180 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
@@ -198,7 +198,7 @@ export default function Home() {
             ))}
           </ScrollView>
 
-          <View style={{ paddingHorizontal: spacing.lg, gap: spacing.md, marginTop: spacing.md }}>
+          <View style={{ paddingHorizontal: 20, gap: spacing.md, marginTop: spacing.md }}>
             {EXPLORE_ARTICLES.map((a) => (
               <TouchableOpacity key={a.id} style={styles.article} activeOpacity={0.85} testID={`article-${a.id}`}>
                 <ImageBackground source={{ uri: a.image }} style={styles.articleImg} imageStyle={{ borderRadius: radii.card }}>
@@ -230,9 +230,7 @@ export default function Home() {
       </TouchableOpacity>
     </View>
   );
-}
-
-function ActionOrb({
+}function ActionOrb({
   label,
   icon,
   onPress,
@@ -284,9 +282,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: 20,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.lg,
   },
   iconBtn: {
     width: 38,
@@ -311,8 +309,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.secondary,
   },
   proPillText: { ...type.bodySm, color: '#0E0F0D', fontWeight: '800' },
-  heroWrap: { paddingHorizontal: spacing.lg, marginTop: spacing.sm },
-  hero: { borderRadius: radii.card, overflow: 'hidden', minHeight: 220 },
+  heroWrap: { paddingHorizontal: 20, marginTop: spacing.xs },
+  hero: { borderRadius: radii.card, overflow: 'hidden', minHeight: 230 },
   heroInner: { padding: spacing.lg, gap: 6 },
   heroEyebrow: { ...type.caption, color: colors.primary },
   heroTitle: { ...type.h2, color: colors.textPrimary, marginTop: 4 },
@@ -334,13 +332,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.xl,
+    paddingHorizontal: 20,
+    marginTop: 32,
     marginBottom: spacing.md,
   },
   sectionTitle: { ...type.h3, color: colors.textPrimary },
   sectionAction: { ...type.bodySm, color: colors.primary, fontWeight: '600' },
-  hScroll: { paddingHorizontal: spacing.lg, gap: 12, paddingRight: spacing.xl },
+  hScroll: { paddingHorizontal: 20, gap: 12, paddingRight: 32 },
   categoryCard: { marginRight: 12 },
   categoryImg: {
     width: 160,
@@ -396,13 +394,18 @@ const styles = StyleSheet.create({
   articleTitle: { ...type.h3, color: colors.textPrimary },
   owl: {
     position: 'absolute',
-    bottom: 110,
-    right: 18,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    bottom: 108,
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#E0A458',
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
   },
   owlGlow: {
     position: 'absolute',
@@ -410,13 +413,14 @@ const styles = StyleSheet.create({
     height: 70,
     borderRadius: 35,
     backgroundColor: colors.secondary,
-    opacity: 0.2,
+    opacity: 0.18,
   },
   owlImg: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     borderWidth: 2,
     borderColor: colors.secondary,
+    backgroundColor: colors.bgTertiary,
   },
 });
