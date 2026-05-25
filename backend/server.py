@@ -94,6 +94,11 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     message: str
+    # Optional context from the client to make the owl genuinely smart.
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    month: Optional[str] = None              # e.g. "May"
+    recent_finds: Optional[List[str]] = None # last few common names
 
 
 class ChatResponse(BaseModel):
@@ -140,10 +145,13 @@ IDENTIFY_SYSTEM_PROMPT = (
 )
 
 OWL_SYSTEM_PROMPT = (
-    "You are Wise, a friendly, knowledgeable owl bird-expert assistant inside the BirdLens app. "
-    "Help users identify birds from descriptions, explain bird behavior, suggest how to attract birds, "
-    "and answer nature questions warmly and concisely. Keep replies under 120 words unless asked for depth. "
-    "Use a warm, encouraging tone. Avoid emojis unless the user uses them first."
+    "You are BirdLens's expert birding companion — a warm, knowledgeable ornithologist. "
+    "Help users identify birds from descriptions, explain bird behavior and calls, advise how to attract specific birds, "
+    "suggest the best times and places to birdwatch, and answer any nature question. "
+    "Be concise (under 130 words unless asked for depth), friendly, and genuinely helpful. "
+    "When the user's location, current month, or recent finds are provided, weave them into your answer naturally — "
+    "reference birds active in their area and season, and call back to species they've recently spotted. "
+    "Never invent finds the user hasn't actually made. Avoid emojis unless the user uses them first."
 )
 
 
@@ -309,17 +317,27 @@ async def chat_endpoint(req: ChatRequest):
         .to_list(50)
     )
 
-    # Build context-aware system prompt with history summary
+    # Build context-aware system prompt with history + user context
     history_text = ""
     if prior:
         history_text = "\n\nPrior conversation:\n" + "\n".join(
             f"{m['role'].upper()}: {m['content']}" for m in prior[-10:]
         )
 
+    context_bits: List[str] = []
+    if req.latitude is not None and req.longitude is not None:
+        context_bits.append(f"User location: lat {req.latitude:.3f}, lng {req.longitude:.3f}.")
+    if req.month:
+        context_bits.append(f"Current month: {req.month}.")
+    if req.recent_finds:
+        finds = ", ".join(req.recent_finds[:5])
+        context_bits.append(f"User's recent identifications: {finds}.")
+    context_text = ("\n\nUser context:\n" + "\n".join(context_bits)) if context_bits else ""
+
     chat = LlmChat(
         api_key=LLM_KEY,
         session_id=session_id,
-        system_message=OWL_SYSTEM_PROMPT + history_text,
+        system_message=OWL_SYSTEM_PROMPT + context_text + history_text,
     ).with_model(CHAT_MODEL_PROVIDER, CHAT_MODEL_NAME)
 
     try:

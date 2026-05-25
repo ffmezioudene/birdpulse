@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Image,
   ScrollView,
 } from 'react-native';
@@ -16,20 +15,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import { OWL_AVATAR } from '@/src/lib/birds';
 import { chat } from '@/src/lib/api';
 import { storage } from '@/src/utils/storage';
-import { KEYS } from '@/src/lib/state';
+import { KEYS, getHistory } from '@/src/lib/state';
+import { FeatherWave } from '@/src/components/FeatherWave';
 
 type Msg = { id: string; role: 'user' | 'assistant'; content: string };
 
 const SUGGESTIONS = [
-  'How do I attract birds to my yard?',
-  'What bird is red with a crest?',
-  'Best time of day to birdwatch?',
-  'Why do birds sing at dawn?',
+  'What birds are near me now?',
+  "What's that bird singing at dawn?",
+  'How do I attract cardinals?',
+  'Best time to birdwatch this week?',
 ];
 
 export default function ChatScreen() {
@@ -39,16 +40,36 @@ export default function ChatScreen() {
       id: 'welcome',
       role: 'assistant',
       content:
-        "Hi, I'm Wise — your friendly owl guide. Ask me anything about birds, behavior, or how to attract them.",
+        "Hi — I'm your birding companion. Tell me where you are or what you've seen and I'll help you find more.",
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [recentFinds, setRecentFinds] = useState<string[]>([]);
   const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
     storage.getItem<string>(KEYS.chatSession, '').then((s) => s && setSessionId(s));
+    // Pull recent finds from local history for context
+    getHistory().then((h) => {
+      const names = h
+        .map((x) => x.commonName)
+        .filter((n) => n && n.toLowerCase() !== 'unknown')
+        .slice(0, 5);
+      setRecentFinds(names);
+    });
+    // Quietly try to grab location (only if user already granted)
+    (async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({});
+          setCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        }
+      } catch {}
+    })();
   }, []);
 
   const send = async (text?: string) => {
@@ -60,7 +81,13 @@ export default function ChatScreen() {
     setMessages((m) => [...m, userMsg]);
     setLoading(true);
     try {
-      const res = await chat(content, sessionId || undefined);
+      const month = new Date().toLocaleString('en-US', { month: 'long' });
+      const res = await chat(content, sessionId || undefined, {
+        latitude: coords?.lat,
+        longitude: coords?.lng,
+        month,
+        recent_finds: recentFinds,
+      });
       if (!sessionId) {
         setSessionId(res.session_id);
         await storage.setItem(KEYS.chatSession, res.session_id);
@@ -120,8 +147,8 @@ export default function ChatScreen() {
 
           {loading && (
             <View style={styles.typing}>
-              <ActivityIndicator color={colors.primary} size="small" />
-              <Text style={styles.typingText}>Wise is typing…</Text>
+              <FeatherWave size={22} mode="loading" />
+              <Text style={styles.typingText}>Thinking…</Text>
             </View>
           )}
 

@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
+import { FeatherWave } from '@/src/components/FeatherWave';
 import {
   consumeFreeUse,
   getFreeUses,
@@ -195,19 +196,7 @@ export default function Identify() {
 
           {analyzing && (
             <View style={styles.scanOverlay} testID="analyzing-overlay">
-              <Animated.View
-                style={[
-                  styles.scanLine,
-                  {
-                    transform: [
-                      {
-                        translateY: pulse.interpolate({ inputRange: [0, 1], outputRange: [-180, 180] }),
-                      },
-                    ],
-                  },
-                ]}
-              />
-              <ActivityIndicator color={colors.primary} size="large" />
+              <FeatherWave size={90} mode="loading" glow />
               <Text style={styles.scanText}>Analyzing…</Text>
             </View>
           )}

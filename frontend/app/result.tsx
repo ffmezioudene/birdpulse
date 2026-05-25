@@ -1,22 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
+  Animated,
+  Easing,
+  Share,
+  Dimensions,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useAudioPlayer } from 'expo-audio';
 
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
-import { IdentifyResult } from '@/src/lib/api';
+import { IdentifyResult, fetchXenoCanto } from '@/src/lib/api';
 import { addHistory, addSighting, toggleFavorite } from '@/src/lib/state';
 import { SEED_BIRDS } from '@/src/lib/birds';
+import { FeatherWave } from '@/src/components/FeatherWave';
+import { PolaroidCard } from '@/src/components/PolaroidCard';
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 export default function Result() {
   const router = useRouter();
@@ -24,7 +31,21 @@ export default function Result() {
   const [data, setData] = useState<IdentifyResult | null>(null);
   const [saved, setSaved] = useState(false);
   const [logged, setLogged] = useState(false);
+  const [displayedConf, setDisplayedConf] = useState(0);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [dropped, setDropped] = useState(false);
+  const player = useAudioPlayer(null);
 
+  // Animations
+  const polaroidScale = useRef(new Animated.Value(1)).current;
+  const polaroidTranslateX = useRef(new Animated.Value(0)).current;
+  const polaroidTranslateY = useRef(new Animated.Value(0)).current;
+  const polaroidOpacity = useRef(new Animated.Value(1)).current;
+  const detailOpacity = useRef(new Animated.Value(0)).current;
+  const detailTranslateY = useRef(new Animated.Value(20)).current;
+
+  // Parse payload + log history once on mount
   useEffect(() => {
     try {
       if (params.payload) {
@@ -45,10 +66,65 @@ export default function Result() {
     } catch {}
   }, [params.payload, params.imageBase64, params.type]);
 
+  // Confidence count-up + reveal sequence
+  useEffect(() => {
+    if (!data) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // Count-up animation
+    const target = data.confidence || 0;
+    const steps = 24;
+    let step = 0;
+    const t = setInterval(() => {
+      step += 1;
+      const next = Math.round((step / steps) * target);
+      setDisplayedConf(next);
+      if (step % 4 === 0) Haptics.selectionAsync();
+      if (step >= steps) {
+        setDisplayedConf(target);
+        clearInterval(t);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    }, 35);
+
+    // Slide-in details
+    Animated.parallel([
+      Animated.timing(detailOpacity, { toValue: 1, duration: 600, delay: 600, useNativeDriver: true }),
+      Animated.timing(detailTranslateY, { toValue: 0, duration: 600, delay: 600, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+
+    return () => clearInterval(t);
+  }, [data, detailOpacity, detailTranslateY]);
+
+  // Fetch bird call from xeno-canto and auto-play softly
+  useEffect(() => {
+    if (!data) return;
+    (async () => {
+      try {
+        const res = await fetchXenoCanto(data.commonName, 1);
+        const url = res.recordings?.[0]?.audio_url;
+        if (url) {
+          setAudioUrl(url);
+          // Auto-play softly after the develop lands
+          setTimeout(() => {
+            try {
+              player.replace({ uri: url });
+              player.volume = 0.6;
+              player.play();
+              setPlaying(true);
+            } catch {}
+          }, 1400);
+        }
+      } catch {}
+    })();
+    return () => {
+      try { player.pause(); } catch {}
+    };
+  }, [data, player]);
+
   if (!data) {
     return (
       <View style={styles.root} testID="result-loading">
-        <Text style={{ color: '#fff' }}>Loading…</Text>
+        <FeatherWave size={80} mode="loading" glow />
       </View>
     );
   }
@@ -61,6 +137,8 @@ export default function Result() {
   const match = SEED_BIRDS.find(
     (b) => b.commonName.toLowerCase() === data.commonName.toLowerCase()
   );
+
+  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
   const onSave = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -82,119 +160,149 @@ export default function Result() {
     setLogged(true);
   };
 
+  const togglePlay = () => {
+    Haptics.selectionAsync();
+    try {
+      if (playing) { player.pause(); setPlaying(false); }
+      else { if (audioUrl) { player.replace({ uri: audioUrl }); } player.play(); setPlaying(true); }
+    } catch {}
+  };
+
+  const onShare = async () => {
+    Haptics.selectionAsync();
+    try {
+      await Share.share({ message: `I just spotted a ${data.commonName} (${data.scientificName}) on BirdLens.` });
+    } catch {}
+  };
+
+  // The DROP — Polaroid shrinks and tucks toward the Collection tab (bottom-right of screen)
+  const dropToJournal = () => {
+    if (dropped) return;
+    setDropped(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Animated.parallel([
+      Animated.timing(polaroidScale, { toValue: 0.18, duration: 600, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(polaroidTranslateX, { toValue: SCREEN_W * 0.32, duration: 600, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(polaroidTranslateY, { toValue: SCREEN_H * 0.42, duration: 600, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(polaroidOpacity, { toValue: 0, duration: 600, delay: 200, useNativeDriver: true }),
+    ]).start(() => {
+      router.replace('/(tabs)/collection');
+    });
+  };
+
   return (
     <View style={styles.root} testID="result-screen">
-      <ScrollView contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
-        <View style={styles.heroWrap}>
-          <Image source={{ uri: heroImage }} style={styles.heroImg} />
-          <LinearGradient
-            colors={['transparent', 'rgba(14,15,13,0.9)', '#0E0F0D']}
-            locations={[0.3, 0.85, 1]}
-            style={StyleSheet.absoluteFillObject}
-          />
-          <SafeAreaView edges={['top']} style={styles.heroHeader}>
-            <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={styles.iconBtn} testID="result-close">
-              <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-            </TouchableOpacity>
-            <View style={styles.badge}>
-              <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
-              <Text style={styles.badgeText}>Identified</Text>
-            </View>
-          </SafeAreaView>
-
-          <View style={styles.heroCopy}>
-            <Text style={styles.confidence}>{data.confidence}% match</Text>
-            <Text style={styles.name}>{data.commonName}</Text>
-            <Text style={styles.latin}>{data.scientificName}</Text>
-          </View>
-        </View>
-
-        {/* Actions */}
-        <View style={styles.actions}>
-          <ActionButton
-            icon={saved ? 'heart' : 'heart-outline'}
-            label={saved ? 'Saved' : 'Save'}
-            active={saved}
-            onPress={onSave}
-            testID="result-save"
-          />
-          <ActionButton
-            icon={logged ? 'location' : 'location-outline'}
-            label={logged ? 'Logged' : 'Log Sighting'}
-            active={logged}
-            onPress={onLogSighting}
-            testID="result-log"
-          />
-          <ActionButton
-            icon="volume-medium-outline"
-            label="Play Call"
-            onPress={() => {
-              if (match) router.push(`/bird/${match.id}` as any);
-            }}
-            testID="result-play"
-          />
-        </View>
-
-        {/* Description */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>About</Text>
-          <Text style={styles.body}>{data.shortDescription}</Text>
-        </View>
-
-        {/* Alternatives */}
-        {!!data.alternatives?.length && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Top alternatives</Text>
-            {data.alternatives.map((a, i) => (
-              <View key={i} style={styles.altRow}>
-                <Text style={styles.altName}>{a.commonName}</Text>
-                <View style={styles.altBarWrap}>
-                  <View style={[styles.altBar, { width: `${Math.max(2, a.confidence)}%` }]} />
-                </View>
-                <Text style={styles.altPct}>{a.confidence}%</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        <View style={styles.facts}>
-          <Fact label="Habitat" value={data.habitat} />
-          <Fact label="Diet" value={data.diet} />
-          <Fact label="Size" value={data.size} />
-          <Fact label="Conservation" value={data.conservationStatus} />
-        </View>
-
-        {match && (
-          <TouchableOpacity
-            style={styles.detailBtn}
-            onPress={() => router.push(`/bird/${match.id}` as any)}
-            testID="result-view-detail"
-          >
-            <Text style={styles.detailBtnText}>View full details</Text>
-            <Ionicons name="arrow-forward" size={18} color="#0E0F0D" />
+      <SafeAreaView edges={['top']} style={styles.safe}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={styles.iconBtn} testID="result-close">
+            <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
           </TouchableOpacity>
-        )}
-      </ScrollView>
+          <View style={styles.identifiedBadge}>
+            <FeatherWave size={14} mode="static" />
+            <Text style={styles.identifiedText}>Identified</Text>
+          </View>
+          <TouchableOpacity onPress={onShare} style={styles.iconBtn} testID="result-share">
+            <Ionicons name="share-outline" size={20} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+          {/* THE DEVELOP — Polaroid */}
+          <Animated.View
+            style={{
+              alignItems: 'center',
+              marginTop: spacing.lg,
+              opacity: polaroidOpacity,
+              transform: [
+                { translateX: polaroidTranslateX },
+                { translateY: polaroidTranslateY },
+                { scale: polaroidScale },
+              ],
+            }}
+          >
+            <PolaroidCard
+              imageUri={heroImage}
+              commonName={data.commonName}
+              scientificName={data.scientificName}
+              date={today}
+              developing
+              testID="polaroid-card"
+            />
+          </Animated.View>
+
+          {/* Confidence count-up */}
+          <Animated.View
+            style={{
+              opacity: detailOpacity,
+              transform: [{ translateY: detailTranslateY }],
+              alignItems: 'center',
+              marginTop: spacing.xl,
+              gap: 4,
+            }}
+          >
+            <Text style={styles.confidence}>{displayedConf}% match</Text>
+            <Text style={styles.eyebrow}>{data.migrationStatus || (match ? match.category : 'Bird')}</Text>
+          </Animated.View>
+
+          {/* Play call control + actions */}
+          <Animated.View style={{ opacity: detailOpacity, transform: [{ translateY: detailTranslateY }] }}>
+            {audioUrl && (
+              <TouchableOpacity onPress={togglePlay} style={styles.playPill} activeOpacity={0.85} testID="result-toggle-call">
+                <View style={styles.playPillIcon}>
+                  <Ionicons name={playing ? 'pause' : 'play'} size={14} color="#0E0F0D" />
+                </View>
+                <Text style={styles.playPillText}>{playing ? 'Pause call' : 'Play call'}</Text>
+                <FeatherWave size={18} mode={playing ? 'loading' : 'static'} />
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.actions}>
+              <ActionButton icon={saved ? 'heart' : 'heart-outline'} label={saved ? 'Saved' : 'Save'} active={saved} onPress={onSave} testID="result-save" />
+              <ActionButton icon={logged ? 'location' : 'location-outline'} label={logged ? 'Logged' : 'Log Sighting'} active={logged} onPress={onLogSighting} testID="result-log" />
+              <ActionButton icon="albums-outline" label="To Journal" onPress={dropToJournal} testID="result-to-journal" />
+            </View>
+
+            {/* About */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>About</Text>
+              <Text style={styles.body}>{data.shortDescription}</Text>
+            </View>
+
+            {/* Alternatives */}
+            {!!data.alternatives?.length && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Also possible</Text>
+                {data.alternatives.map((a, i) => (
+                  <View key={i} style={styles.altRow}>
+                    <Text style={styles.altName}>{a.commonName}</Text>
+                    <View style={styles.altBarWrap}>
+                      <View style={[styles.altBar, { width: `${Math.max(2, a.confidence)}%` }]} />
+                    </View>
+                    <Text style={styles.altPct}>{a.confidence}%</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {match && (
+              <TouchableOpacity style={styles.detailBtn} onPress={() => router.push(`/bird/${match.id}` as any)} testID="result-view-detail">
+                <Text style={styles.detailBtnText}>View full details</Text>
+                <Ionicons name="arrow-forward" size={18} color="#0E0F0D" />
+              </TouchableOpacity>
+            )}
+          </Animated.View>
+        </ScrollView>
+      </SafeAreaView>
     </View>
   );
 }
 
-function ActionButton({
-  icon,
-  label,
-  onPress,
-  active,
-  testID,
-}: {
-  icon: any;
-  label: string;
-  onPress: () => void;
-  active?: boolean;
-  testID: string;
+function ActionButton({ icon, label, onPress, active, testID }: {
+  icon: any; label: string; onPress: () => void; active?: boolean; testID: string;
 }) {
   return (
     <TouchableOpacity style={styles.actionBtn} onPress={onPress} testID={testID}>
-      <View style={[styles.actionIcon, active && { backgroundColor: 'rgba(123,160,91,0.25)' }]}>
+      <View style={[styles.actionIcon, active && { backgroundColor: 'rgba(123,160,91,0.25)', borderColor: colors.primary }]}>
         <Ionicons name={icon} size={20} color={active ? colors.primary : colors.textPrimary} />
       </View>
       <Text style={styles.actionLabel}>{label}</Text>
@@ -202,53 +310,41 @@ function ActionButton({
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.fact}>
-      <Text style={styles.factLabel}>{label}</Text>
-      <Text style={styles.factValue} numberOfLines={3}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
-  heroWrap: { height: 460, position: 'relative' },
-  heroImg: { width: '100%', height: '100%' },
-  heroHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+  root: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  safe: { flex: 1, width: '100%' },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
   },
   iconBtn: {
     width: 38, height: 38, borderRadius: 19,
-    backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.hairline,
   },
-  badge: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14,
+  identifiedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(123,160,91,0.14)',
+    borderWidth: 1, borderColor: 'rgba(123,160,91,0.45)',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
   },
-  badgeText: { ...type.bodySm, color: colors.textPrimary, fontWeight: '600' },
-  heroCopy: { position: 'absolute', bottom: spacing.lg, left: spacing.lg, right: spacing.lg },
-  confidence: { ...type.caption, color: colors.primary, marginBottom: 6 },
-  name: { ...type.h1, color: colors.textPrimary, fontSize: 36 },
-  latin: { ...type.bodyLg, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 },
+  identifiedText: { ...type.caption, color: colors.primary, fontWeight: '700' },
+  confidence: { ...type.h1, color: colors.textPrimary, fontSize: 48, letterSpacing: -2 },
+  eyebrow: { ...type.caption, color: colors.primary, letterSpacing: 1 },
+  playPill: {
+    alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22,
+    backgroundColor: 'rgba(123,160,91,0.14)', borderWidth: 1, borderColor: 'rgba(123,160,91,0.4)',
+    marginTop: spacing.lg,
+  },
+  playPillIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  playPillText: { ...type.bodySm, color: colors.textPrimary, fontWeight: '700' },
   actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: 'row', justifyContent: 'space-around',
     marginHorizontal: spacing.lg,
-    padding: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.hairline,
-    marginTop: -spacing.xl,
+    padding: spacing.md, marginTop: spacing.lg,
+    backgroundColor: colors.card, borderRadius: radii.card,
+    borderWidth: 1, borderColor: colors.hairline,
   },
   actionBtn: { alignItems: 'center', gap: 6 },
   actionIcon: {
@@ -266,19 +362,8 @@ const styles = StyleSheet.create({
   altBarWrap: { flex: 1, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.08)' },
   altBar: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
   altPct: { ...type.bodySm, color: colors.textTertiary, width: 38, textAlign: 'right' },
-  facts: { flexDirection: 'row', flexWrap: 'wrap', padding: spacing.lg, gap: 12 },
-  fact: {
-    flexBasis: '47%',
-    backgroundColor: colors.card,
-    borderRadius: radii.card,
-    borderWidth: 1, borderColor: colors.hairline,
-    padding: spacing.md,
-  },
-  factLabel: { ...type.caption, color: colors.primary, marginBottom: 4 },
-  factValue: { ...type.bodySm, color: colors.textPrimary, lineHeight: 18 },
   detailBtn: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
+    marginHorizontal: spacing.lg, marginTop: spacing.lg,
     backgroundColor: colors.primary,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 16, borderRadius: radii.button,

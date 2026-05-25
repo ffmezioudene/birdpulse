@@ -84,10 +84,19 @@ export async function identifySound(spectrogramBase64: string): Promise<Identify
   });
 }
 
-export async function chat(message: string, sessionId?: string) {
+export async function chat(
+  message: string,
+  sessionId?: string,
+  context?: {
+    latitude?: number;
+    longitude?: number;
+    month?: string;
+    recent_finds?: string[];
+  },
+) {
   return jsonFetch<{ session_id: string; reply: string }>('/api/chat', {
     method: 'POST',
-    body: JSON.stringify({ message, session_id: sessionId }),
+    body: JSON.stringify({ message, session_id: sessionId, ...(context || {}) }),
   });
 }
 
