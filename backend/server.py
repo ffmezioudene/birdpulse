@@ -75,6 +75,15 @@ class IdentifyResult(BaseModel):
     funFacts: List[str] = []
     rangeSummary: str = ""
     conservationStatus: str = ""
+    # Extended depth fields (added in v1.1)
+    genus: str = ""
+    family: str = ""
+    order: str = ""
+    wingspan: str = ""
+    wingShape: str = ""
+    howToIdentify: str = ""
+    nestingBehavior: str = ""
+    migrationStatus: str = ""
 
 
 class ChatMessage(BaseModel):
@@ -111,9 +120,17 @@ IDENTIFY_SYSTEM_PROMPT = (
     '  "confidence": int (0-100),\n'
     '  "alternatives": [{"commonName": str, "confidence": int}, ...] (0-3 entries),\n'
     '  "shortDescription": str (2-3 sentences),\n'
-    '  "habitat": str,\n'
-    '  "diet": str,\n'
-    '  "size": str,\n'
+    '  "habitat": str (1-2 sentences),\n'
+    '  "diet": str (1-2 sentences),\n'
+    '  "size": str (e.g. "21-23 cm"),\n'
+    '  "wingspan": str (e.g. "25-31 cm"),\n'
+    '  "wingShape": str (1 short phrase, e.g. "Rounded, short and broad"),\n'
+    '  "genus": str (e.g. "Cardinalis"),\n'
+    '  "family": str (e.g. "Cardinalidae"),\n'
+    '  "order": str (e.g. "Passeriformes"),\n'
+    '  "howToIdentify": str (2-3 sentences focused on distinctive visual marks),\n'
+    '  "nestingBehavior": str (2-3 sentences on nest, eggs, brooding),\n'
+    '  "migrationStatus": str (one of: "Year-round resident", "Migratory - currently breeding", "Migratory - currently wintering", "Migratory - currently migrating", or a short specific phrase),\n'
     '  "funFacts": [str, str, str],\n'
     '  "rangeSummary": str,\n'
     '  "conservationStatus": str\n'
@@ -396,6 +413,14 @@ SEED_BIRDS = [
         "habitat": "Woodland edges, gardens, shrublands across eastern and central North America.",
         "diet": "Seeds, grains, fruits, and insects.",
         "size": "21–23 cm",
+        "wingspan": "25–31 cm",
+        "wingShape": "Rounded, short and broad",
+        "genus": "Cardinalis",
+        "family": "Cardinalidae",
+        "order": "Passeriformes",
+        "howToIdentify": "Look for the bold crest, thick orange-red conical bill, and black face mask. Males are entirely brilliant red; females are warm buff-brown with red highlights on the crest, wings, and tail.",
+        "nestingBehavior": "Builds a loose cup-shaped nest of twigs, grasses, and bark in dense shrubs 1–4 m off the ground. Lays 2–5 pale greenish eggs. Female incubates while the male feeds her; both feed the chicks.",
+        "migrationStatus": "Year-round resident",
         "funFacts": [
             "Both males and females sing — uncommon among North American songbirds.",
             "Cardinals mate for life and stay together year-round.",
@@ -414,6 +439,14 @@ SEED_BIRDS = [
         "habitat": "Forests, parks, and suburban yards across eastern and central North America.",
         "diet": "Nuts, seeds, insects, and occasionally small vertebrates.",
         "size": "25–30 cm",
+        "wingspan": "34–43 cm",
+        "wingShape": "Broad and rounded",
+        "genus": "Cyanocitta",
+        "family": "Corvidae",
+        "order": "Passeriformes",
+        "howToIdentify": "Bright blue upperparts barred with black, white wing patches, a tall crest, and a bold black necklace across a white throat.",
+        "nestingBehavior": "Both sexes build a bulky stick nest in a tree fork 3–10 m up. Lays 4–5 olive-buff eggs. Pairs are monogamous and may reuse the territory year after year.",
+        "migrationStatus": "Partial migrant — many populations are year-round residents",
         "funFacts": [
             "Blue Jays can mimic hawk calls to scare off other birds.",
             "Their blue color comes from light refraction, not pigment.",
@@ -431,11 +464,19 @@ SEED_BIRDS = [
         "shortDescription": "America's national bird — a massive raptor with a white head, dark brown body, and powerful yellow beak.",
         "habitat": "Near large bodies of water across North America.",
         "diet": "Primarily fish, but also waterfowl and carrion.",
-        "size": "70–102 cm; wingspan 1.8–2.3 m",
+        "size": "70–102 cm",
+        "wingspan": "1.8–2.3 m",
+        "wingShape": "Long, broad, plank-like with finger-tipped primaries",
+        "genus": "Haliaeetus",
+        "family": "Accipitridae",
+        "order": "Accipitriformes",
+        "howToIdentify": "Adults are unmistakable — white head and tail contrasting with a dark chocolate-brown body and a massive yellow hooked beak. Juveniles are mottled brown and white for ~5 years.",
+        "nestingBehavior": "Builds enormous stick nests near water, often reused and added to for decades — some weigh over a ton. Lays 1–3 white eggs; both parents incubate ~35 days.",
+        "migrationStatus": "Partial migrant — northern birds move south in winter",
         "funFacts": [
             "Bald Eagles can dive at speeds up to 100 mph.",
             "Nests can weigh over a ton and be reused for decades.",
-            "Removed from US endangered list in 2007 after dramatic recovery.",
+            "Removed from the US endangered list in 2007 after dramatic recovery.",
         ],
         "rangeSummary": "Across most of North America; coastal and inland waterways.",
         "conservationStatus": "Least Concern",
@@ -450,6 +491,14 @@ SEED_BIRDS = [
         "habitat": "Ponds, lakes, rivers, and wetlands worldwide.",
         "diet": "Aquatic plants, seeds, insects, and small crustaceans.",
         "size": "50–65 cm",
+        "wingspan": "81–98 cm",
+        "wingShape": "Pointed, falcate — built for fast, direct flight",
+        "genus": "Anas",
+        "family": "Anatidae",
+        "order": "Anseriformes",
+        "howToIdentify": "Males in breeding plumage show a glossy green head, white neck ring, chestnut breast, and curled black tail feathers. Females are mottled brown with a blue speculum bordered in white.",
+        "nestingBehavior": "Female builds a down-lined nest on the ground near water. Lays 7–13 pale greenish-buff eggs and incubates alone for ~28 days. Ducklings are precocial and follow her to water within a day.",
+        "migrationStatus": "Migratory — currently following seasonal water",
         "funFacts": [
             "Almost all domestic ducks descend from Mallards.",
             "They can fly up to 55 mph during migration.",
@@ -468,6 +517,14 @@ SEED_BIRDS = [
         "habitat": "Gardens, woodland edges, and parks across eastern North America.",
         "diet": "Flower nectar, tree sap, and small insects.",
         "size": "7–9 cm",
+        "wingspan": "8–11 cm",
+        "wingShape": "Narrow, pointed, capable of hovering and reverse flight",
+        "genus": "Archilochus",
+        "family": "Trochilidae",
+        "order": "Apodiformes",
+        "howToIdentify": "Emerald-green back, white underparts. Males show a brilliant iridescent red gorget that flashes in direct light; females have a plain white throat and rounded tail with white tips.",
+        "nestingBehavior": "Female builds a thimble-sized cup of plant down bound with spider silk, decorated with lichen, on a downward-sloping branch. Lays 2 pea-sized white eggs; she raises chicks alone.",
+        "migrationStatus": "Long-distance migrant — currently breeding in the east (Apr–Sep) or wintering in Central America",
         "funFacts": [
             "They beat their wings 53 times per second.",
             "Some cross the Gulf of Mexico nonstop — 800 km in 18–22 hours.",
@@ -486,6 +543,14 @@ SEED_BIRDS = [
         "habitat": "Lawns, gardens, woodlands, and parks across North America.",
         "diet": "Earthworms, insects, and fruit.",
         "size": "23–28 cm",
+        "wingspan": "31–41 cm",
+        "wingShape": "Rounded, fairly long for a thrush",
+        "genus": "Turdus",
+        "family": "Turdidae",
+        "order": "Passeriformes",
+        "howToIdentify": "Warm orange-red breast and belly, slate-gray back and head, white throat streaked with black, and a yellow bill. Females are slightly paler.",
+        "nestingBehavior": "Female builds a sturdy cup of mud and grass on a branch or ledge. Lays 3–5 sky-blue eggs and incubates ~14 days. Up to three broods per year.",
+        "migrationStatus": "Short-distance migrant — flocks shift south for winter",
         "funFacts": [
             "Robins often run, stop, and tilt their heads to spot worms.",
             "They can produce up to three broods per year.",
@@ -504,6 +569,14 @@ SEED_BIRDS = [
         "habitat": "Mixed and deciduous forests, parks, and feeders in northern North America.",
         "diet": "Insects, seeds, and berries.",
         "size": "12–15 cm",
+        "wingspan": "16–21 cm",
+        "wingShape": "Short and rounded",
+        "genus": "Poecile",
+        "family": "Paridae",
+        "order": "Passeriformes",
+        "howToIdentify": "Sharp black cap and bib, bright white cheeks, gray back, and warm buff sides. Compare to the Carolina Chickadee, which has a cleaner edge to the bib and less white in the wing.",
+        "nestingBehavior": "Excavates or uses cavities in rotten wood. Female lines the cavity with moss and fur. Lays 6–8 white eggs spotted reddish-brown; incubates ~12 days.",
+        "migrationStatus": "Year-round resident",
         "funFacts": [
             "Their 'chick-a-dee' call adds 'dee' notes based on threat level.",
             "They can remember thousands of food cache locations.",
@@ -521,7 +594,15 @@ SEED_BIRDS = [
         "shortDescription": "A powerful nocturnal raptor with prominent ear tufts and piercing yellow eyes.",
         "habitat": "Forests, deserts, swamps, and city parks across the Americas.",
         "diet": "Mammals, birds, reptiles — even skunks and porcupines.",
-        "size": "46–63 cm; wingspan 1–1.5 m",
+        "size": "46–63 cm",
+        "wingspan": "1.0–1.5 m",
+        "wingShape": "Broad and rounded, silent in flight",
+        "genus": "Bubo",
+        "family": "Strigidae",
+        "order": "Strigiformes",
+        "howToIdentify": "Massive, stocky owl with widely spaced ear tufts, a white throat patch, mottled gray-brown plumage, and intense yellow eyes. The deep 'hoo-hoo hooo hoo-hoo' is unmistakable.",
+        "nestingBehavior": "Does not build its own nest — takes over old hawk, crow, or squirrel nests. Lays 1–4 dull white eggs in late winter. Incubation ~33 days; chicks fledge at 6–7 weeks.",
+        "migrationStatus": "Year-round resident",
         "funFacts": [
             "Their grip strength is roughly 500 psi — far stronger than a human hand.",
             "They have asymmetrical ear openings to pinpoint prey in the dark.",

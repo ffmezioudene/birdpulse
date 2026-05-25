@@ -24,6 +24,9 @@ import { getFavorites, toggleFavorite } from '@/src/lib/state';
 
 type TabKey = 'photos' | 'description' | 'sounds' | 'range';
 
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
 export default function BirdDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -33,6 +36,7 @@ export default function BirdDetail() {
   const [recs, setRecs] = useState<XenoRecording[]>([]);
   const [loadingSound, setLoadingSound] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [activeMonth, setActiveMonth] = useState<number>(new Date().getMonth());
   const player = useAudioPlayer(null);
 
   useEffect(() => {
@@ -140,18 +144,62 @@ export default function BirdDetail() {
 
         {tab === 'description' && (
           <View style={styles.section}>
+            {/* Headline + did-you-know highlight */}
             <Text style={styles.body}>{bird.shortDescription}</Text>
-            <Row icon="home-outline" label="Habitat" value={bird.habitat} />
-            <Row icon="restaurant-outline" label="Diet" value={bird.diet} />
-            <Row icon="resize-outline" label="Size" value={bird.size} />
-            <Row icon="shield-checkmark-outline" label="Conservation" value={bird.conservationStatus} />
-            <Text style={styles.subHeader}>Fun facts</Text>
-            {bird.funFacts.map((f, i) => (
-              <View key={i} style={styles.factPill}>
-                <View style={styles.factDot} />
-                <Text style={styles.factText}>{f}</Text>
+
+            {bird.funFacts?.[0] && (
+              <View style={styles.didYouKnow}>
+                <View style={styles.didYouKnowIcon}>
+                  <Ionicons name="sparkles" size={14} color={colors.secondary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.didYouKnowLabel}>DID YOU KNOW</Text>
+                  <Text style={styles.didYouKnowText}>{bird.funFacts[0]}</Text>
+                </View>
               </View>
-            ))}
+            )}
+
+            {/* Scientific Classification */}
+            {(bird.genus || bird.family || bird.order) && (
+              <View style={{ gap: 10 }}>
+                <SectionHeading icon="school-outline" label="Scientific Classification" />
+                <View style={styles.classRow}>
+                  <ClassPill label="Genus" value={bird.genus || '—'} />
+                  <ClassPill label="Family" value={bird.family || '—'} />
+                  <ClassPill label="Order" value={bird.order || '—'} />
+                </View>
+              </View>
+            )}
+
+            {/* Key Facts grid */}
+            <View style={{ gap: 10 }}>
+              <SectionHeading icon="key-outline" label="Key Facts" />
+              <View style={styles.factsGrid}>
+                <FactCell icon="resize-outline" label="Size" value={bird.size || '—'} />
+                <FactCell icon="swap-horizontal-outline" label="Wingspan" value={bird.wingspan || '—'} />
+                <FactCell icon="airplane-outline" label="Wing Shape" value={bird.wingShape || '—'} />
+                <FactCell icon="shield-checkmark-outline" label="Conservation" value={bird.conservationStatus || '—'} />
+              </View>
+            </View>
+
+            {/* Collapsible content blocks */}
+            <Collapsible icon="search-outline" title="How to Identify It" body={bird.howToIdentify || ''} defaultOpen />
+            <Collapsible icon="restaurant-outline" title="Diet" body={bird.diet || ''} />
+            <Collapsible icon="leaf-outline" title="Habitat" body={bird.habitat || ''} />
+            <Collapsible icon="egg-outline" title="Nesting Behavior" body={bird.nestingBehavior || ''} />
+
+            {/* Remaining fun facts */}
+            {bird.funFacts && bird.funFacts.length > 1 && (
+              <View style={{ gap: 8, marginTop: 4 }}>
+                <SectionHeading icon="bulb-outline" label="More Fun Facts" />
+                {bird.funFacts.slice(1).map((f, i) => (
+                  <View key={i} style={styles.factPill}>
+                    <View style={styles.factDot} />
+                    <Text style={styles.factText}>{f}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         )}
 
@@ -195,6 +243,16 @@ export default function BirdDetail() {
 
         {tab === 'range' && (
           <View style={styles.section}>
+            {/* Migration status banner */}
+            <View style={styles.migrationBanner}>
+              <View style={styles.migrationDot} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.migrationLabel}>MIGRATION STATUS</Text>
+                <Text style={styles.migrationText}>{bird.migrationStatus || 'Status unknown'}</Text>
+              </View>
+            </View>
+
+            {/* Range visual */}
             <View style={styles.rangeCard}>
               <LinearGradient colors={['#1F2A1A', '#0E1410']} style={StyleSheet.absoluteFillObject} />
               <View style={styles.rangePin} />
@@ -202,11 +260,30 @@ export default function BirdDetail() {
               <View style={[styles.rangePin, { right: 60, bottom: 80 }]} />
               <Text style={styles.rangeText}>{bird.rangeSummary}</Text>
             </View>
-            <Text style={[styles.body, { marginTop: spacing.md }]}>
-              {Platform.OS === 'web'
-                ? 'Open on mobile for the interactive map.'
-                : 'A detailed interactive range map is available on Pro.'}
-            </Text>
+
+            {/* Month slider */}
+            <View style={{ gap: 10 }}>
+              <SectionHeading icon="calendar-outline" label="Where they are by month" />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.monthRow}
+              >
+                {MONTHS.map((m, i) => (
+                  <TouchableOpacity
+                    key={m}
+                    onPress={() => setActiveMonth(i)}
+                    style={[styles.monthChip, activeMonth === i && styles.monthChipActive]}
+                    testID={`month-${m.toLowerCase()}`}
+                  >
+                    <Text style={[styles.monthText, activeMonth === i && styles.monthTextActive]}>{m}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <Text style={styles.body}>
+                {`Currently viewing ${MONTHS_FULL[activeMonth]} — ${bird.rangeSummary}`}
+              </Text>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -224,6 +301,64 @@ function Row({ icon, label, value }: { icon: any; label: string; value: string }
         <Text style={styles.rowLabel}>{label}</Text>
         <Text style={styles.rowValue}>{value}</Text>
       </View>
+    </View>
+  );
+}
+
+function SectionHeading({ icon, label }: { icon: any; label: string }) {
+  return (
+    <View style={styles.sectionHeading}>
+      <View style={styles.sectionHeadingIcon}>
+        <Ionicons name={icon} size={14} color={colors.primary} />
+      </View>
+      <Text style={styles.sectionHeadingText}>{label}</Text>
+    </View>
+  );
+}
+
+function ClassPill({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.classPill}>
+      <Text style={styles.classPillLabel}>{label}</Text>
+      <Text style={styles.classPillValue}>{value}</Text>
+    </View>
+  );
+}
+
+function FactCell({ icon, label, value }: { icon: any; label: string; value: string }) {
+  return (
+    <View style={styles.factCell}>
+      <View style={styles.factCellIcon}>
+        <Ionicons name={icon} size={14} color={colors.primary} />
+      </View>
+      <Text style={styles.factCellLabel}>{label}</Text>
+      <Text style={styles.factCellValue} numberOfLines={2}>{value}</Text>
+    </View>
+  );
+}
+
+function Collapsible({
+  icon, title, body, defaultOpen = false,
+}: { icon: any; title: string; body: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  if (!body) return null;
+  return (
+    <View style={styles.collapsible}>
+      <TouchableOpacity
+        style={styles.collapsibleHeader}
+        activeOpacity={0.8}
+        onPress={() => setOpen(!open)}
+        testID={`collapsible-${title.toLowerCase().replace(/\s+/g, '-')}`}
+      >
+        <View style={styles.collapsibleHeaderLeft}>
+          <View style={styles.collapsibleIcon}>
+            <Ionicons name={icon} size={16} color={colors.primary} />
+          </View>
+          <Text style={styles.collapsibleTitle}>{title}</Text>
+        </View>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textTertiary} />
+      </TouchableOpacity>
+      {open && <Text style={styles.collapsibleBody}>{body}</Text>}
     </View>
   );
 }
@@ -312,4 +447,98 @@ const styles = StyleSheet.create({
     shadowColor: colors.primary, shadowOpacity: 0.8, shadowRadius: 10, shadowOffset: { width: 0, height: 0 },
   },
   rangeText: { ...type.body, color: colors.textPrimary, textAlign: 'center', paddingHorizontal: spacing.lg, zIndex: 2 },
+  // --- Description tab additions ---
+  didYouKnow: {
+    flexDirection: 'row', gap: 12, alignItems: 'flex-start',
+    padding: spacing.md, borderRadius: radii.card,
+    backgroundColor: 'rgba(224,164,88,0.10)',
+    borderWidth: 1, borderColor: 'rgba(224,164,88,0.35)',
+  },
+  didYouKnowIcon: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(224,164,88,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  didYouKnowLabel: { ...type.caption, color: colors.secondary, marginBottom: 4 },
+  didYouKnowText: { ...type.body, color: colors.textPrimary, lineHeight: 22 },
+  sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  sectionHeadingIcon: {
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: 'rgba(123,160,91,0.16)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sectionHeadingText: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700', letterSpacing: -0.2 },
+  classRow: { flexDirection: 'row', gap: 8 },
+  classPill: {
+    flex: 1, padding: spacing.md,
+    backgroundColor: colors.card, borderRadius: radii.card,
+    borderWidth: 1, borderColor: colors.hairline,
+    alignItems: 'flex-start', gap: 4,
+  },
+  classPillLabel: { ...type.caption, color: colors.primary },
+  classPillValue: { ...type.bodySm, color: colors.textPrimary, fontWeight: '700' },
+  factsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  factCell: {
+    width: '47.5%',
+    padding: spacing.md,
+    backgroundColor: colors.card, borderRadius: radii.card,
+    borderWidth: 1, borderColor: colors.hairline,
+    gap: 6,
+  },
+  factCellIcon: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(123,160,91,0.16)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  factCellLabel: { ...type.caption, color: colors.primary },
+  factCellValue: { ...type.bodySm, color: colors.textPrimary, fontWeight: '600', lineHeight: 18 },
+  collapsible: {
+    backgroundColor: colors.card,
+    borderRadius: radii.card,
+    borderWidth: 1, borderColor: colors.hairline,
+    overflow: 'hidden',
+  },
+  collapsibleHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    padding: spacing.md,
+  },
+  collapsibleHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  collapsibleIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(123,160,91,0.16)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  collapsibleTitle: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700' },
+  collapsibleBody: {
+    ...type.body, color: colors.textSecondary, lineHeight: 22,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md, paddingTop: 0,
+  },
+  // --- Range tab additions ---
+  migrationBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: spacing.md, borderRadius: radii.card,
+    backgroundColor: 'rgba(123,160,91,0.10)',
+    borderWidth: 1, borderColor: 'rgba(123,160,91,0.35)',
+  },
+  migrationDot: {
+    width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary,
+    shadowColor: colors.primary, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+  },
+  migrationLabel: { ...type.caption, color: colors.primary, marginBottom: 4 },
+  migrationText: { ...type.bodySm, color: colors.textPrimary, fontWeight: '600' },
+  monthRow: { gap: 8, paddingVertical: 4, paddingRight: spacing.lg },
+  monthChip: {
+    paddingHorizontal: 14, height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1, borderColor: colors.hairline,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 8,
+  },
+  monthChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  monthText: { ...type.bodySm, color: colors.textSecondary, fontWeight: '600' },
+  monthTextActive: { color: '#0E0F0D', fontWeight: '800' },
 });

@@ -13,6 +13,14 @@ export type IdentifyResult = {
   funFacts: string[];
   rangeSummary: string;
   conservationStatus: string;
+  genus?: string;
+  family?: string;
+  order?: string;
+  wingspan?: string;
+  wingShape?: string;
+  howToIdentify?: string;
+  nestingBehavior?: string;
+  migrationStatus?: string;
 };
 
 export type XenoRecording = {
@@ -39,6 +47,14 @@ export type CatalogBird = {
   funFacts: string[];
   rangeSummary: string;
   conservationStatus: string;
+  genus?: string;
+  family?: string;
+  order?: string;
+  wingspan?: string;
+  wingShape?: string;
+  howToIdentify?: string;
+  nestingBehavior?: string;
+  migrationStatus?: string;
 };
 
 async function jsonFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
