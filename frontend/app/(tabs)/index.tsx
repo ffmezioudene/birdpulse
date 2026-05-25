@@ -23,7 +23,7 @@ import {
   OWL_AVATAR,
 } from '@/src/lib/birds';
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
-import { getFreeUses, isPro } from '@/src/lib/state';
+import { getFreeUses, isProEffective } from '@/src/lib/state';
 
 export default function Home() {
   const router = useRouter();
@@ -32,7 +32,7 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = async () => {
-    setProState(await isPro());
+    setProState(await isProEffective());
     setFreeUses(await getFreeUses());
   };
 

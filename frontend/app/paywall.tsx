@@ -15,7 +15,7 @@ import * as Haptics from 'expo-haptics';
 
 import { PAYWALL_BG } from '@/src/lib/birds';
 import { storage } from '@/src/utils/storage';
-import { KEYS, FREE_USES_INITIAL, setPro, getFreeUses } from '@/src/lib/state';
+import { KEYS, FREE_USES_INITIAL, setPro, getFreeUses, isProEffective } from '@/src/lib/state';
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
 
 const { height: SCREEN_H } = Dimensions.get('window');
@@ -34,9 +34,16 @@ export default function Paywall() {
   const [freeUses, setFreeUses] = useState<number>(FREE_USES_INITIAL);
 
   useEffect(() => {
-    getFreeUses().then(setFreeUses);
-    storage.setItem(KEYS.paywallSeen, true);
-  }, []);
+    // If user is already Pro (real subscription OR dev Unlock-Pro toggle), skip the paywall entirely.
+    (async () => {
+      if (await isProEffective()) {
+        router.replace('/(tabs)');
+        return;
+      }
+      setFreeUses(await getFreeUses());
+      storage.setItem(KEYS.paywallSeen, true);
+    })();
+  }, [router]);
 
   const canSkip = freeUses > 0;
 

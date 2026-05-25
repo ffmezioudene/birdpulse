@@ -1,5 +1,6 @@
 // Local app state utilities (free uses, history, favorites, sightings, collections, onboarding/paywall flags)
 import { storage } from '@/src/utils/storage';
+import { FREE_USES_INITIAL as DEV_FREE_USES_INITIAL, getDevProUnlocked } from '@/src/lib/devmode';
 
 export const KEYS = {
   onboardingDone: 'birdlens.onboarding.done',
@@ -14,7 +15,7 @@ export const KEYS = {
   hasRated: 'birdlens.has.rated',
 };
 
-export const FREE_USES_INITIAL = 2;
+export const FREE_USES_INITIAL = DEV_FREE_USES_INITIAL;
 
 export type HistoryItem = {
   id: string;
@@ -60,8 +61,22 @@ export async function isPro(): Promise<boolean> {
   return !!(await storage.getItem<boolean>(KEYS.isPro, false));
 }
 
+/** Effective pro = real pro OR dev "Unlock Pro" toggle. Use this everywhere
+ *  to decide if the user can bypass the paywall. */
+export async function isProEffective(): Promise<boolean> {
+  if (await isPro()) return true;
+  if (await getDevProUnlocked()) return true;
+  return false;
+}
+
 export async function setPro(v: boolean): Promise<void> {
   await storage.setItem(KEYS.isPro, v);
+}
+
+/** Reset the free-use counter back to the initial value. */
+export async function resetFreeUses(): Promise<number> {
+  await storage.setItem(KEYS.freeUsesRemaining, FREE_USES_INITIAL);
+  return FREE_USES_INITIAL;
 }
 
 export async function getHistory(): Promise<HistoryItem[]> {

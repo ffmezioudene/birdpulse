@@ -1,26 +1,47 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Switch, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, type, spacing, radii } from '@/src/theme';
-import { isPro } from '@/src/lib/state';
+import { isProEffective, getFreeUses, resetFreeUses, FREE_USES_INITIAL } from '@/src/lib/state';
 import { storage } from '@/src/utils/storage';
+import { IS_DEV_MODE, getDevProUnlocked, setDevProUnlocked } from '@/src/lib/devmode';
 
 export default function Settings() {
   const router = useRouter();
   const [pro, setProState] = useState(false);
   const [autosave, setAutosave] = useState(false);
+  const [devPro, setDevProState] = useState(false);
+  const [freeUses, setFreeUses] = useState<number>(FREE_USES_INITIAL);
+
+  const refresh = async () => {
+    setProState(await isProEffective());
+    setDevProState(await getDevProUnlocked());
+    setFreeUses(await getFreeUses());
+  };
 
   useEffect(() => {
-    isPro().then(setProState);
+    refresh();
     storage.getItem<boolean>('birdlens.autosave', false).then((v) => setAutosave(!!v));
   }, []);
 
   const toggleAutosave = async (v: boolean) => {
     setAutosave(v);
     await storage.setItem('birdlens.autosave', v);
+  };
+
+  const toggleDevPro = async (v: boolean) => {
+    setDevProState(v);
+    await setDevProUnlocked(v);
+    await refresh();
+  };
+
+  const onResetFreeUses = async () => {
+    const next = await resetFreeUses();
+    setFreeUses(next);
+    Alert.alert('Free uses reset', `Counter is back to ${next}. The paywall will trigger again on attempt ${next + 1}.`);
   };
 
   return (
@@ -98,6 +119,36 @@ export default function Settings() {
               onPress={() => Linking.openURL('https://example.com/terms').catch(() => {})}
             />
           </Section>
+
+          {/* ====== DEVELOPER SECTION — delete this whole block + /src/lib/devmode.ts to ship ====== */}
+          {IS_DEV_MODE && (
+            <View style={{ gap: 6 }} testID="developer-section">
+              <Text style={[styles.sectionLabel, { color: colors.secondary }]}>DEVELOPER · TESTING ONLY</Text>
+              <View style={[styles.group, { borderColor: 'rgba(224,164,88,0.4)' }]}>
+                <RowSwitch
+                  icon="key-outline"
+                  label="Unlock Pro (Testing)"
+                  value={devPro}
+                  onChange={toggleDevPro}
+                  testID="dev-unlock-pro-toggle"
+                />
+                <TouchableOpacity style={styles.row} onPress={onResetFreeUses} testID="dev-reset-free-uses">
+                  <View style={styles.rowIcon}>
+                    <Ionicons name="refresh-outline" size={18} color={colors.secondary} />
+                  </View>
+                  <Text style={styles.rowLabel}>Reset Free Uses (Testing)</Text>
+                  <View style={{ flex: 1 }} />
+                  <Text style={styles.rowRight}>{freeUses} left</Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.devNote}>
+                Single-file flag in <Text style={{ color: colors.secondary, fontWeight: '700' }}>src/lib/devmode.ts</Text>.
+                Set IS_DEV_MODE=false (or delete this block) to ship clean.
+              </Text>
+            </View>
+          )}
+          {/* ====== END DEVELOPER SECTION ====== */}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -182,4 +233,5 @@ const styles = StyleSheet.create({
   },
   rowLabel: { ...type.body, color: colors.textPrimary },
   rowRight: { ...type.bodySm, color: colors.textTertiary, marginRight: 6 },
+  devNote: { ...type.caption, color: colors.textTertiary, paddingHorizontal: spacing.sm, marginTop: 6, lineHeight: 16 },
 });

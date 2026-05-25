@@ -22,7 +22,7 @@ import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import {
   consumeFreeUse,
   getFreeUses,
-  isPro,
+  isProEffective,
 } from '@/src/lib/state';
 import { identifyPhoto, identifySound } from '@/src/lib/api';
 
@@ -46,24 +46,31 @@ export default function Identify() {
     ).start();
   }, [pulse]);
 
-  const ensureUsage = async (): Promise<boolean> => {
-    const pro = await isPro();
-    if (pro) return true;
+  // Permission to START an identification — does NOT consume a use yet.
+  // The use is only counted after a successful result lands in the user's lap.
+  const canStartIdentification = async (): Promise<boolean> => {
+    if (await isProEffective()) return true;
     const left = await getFreeUses();
     if (left <= 0) {
       router.replace('/paywall');
       return false;
     }
-    await consumeFreeUse();
     return true;
   };
 
+  // Called AFTER a successful identification result is shown. Pro users are unaffected.
+  const recordSuccessfulUse = async (): Promise<void> => {
+    if (await isProEffective()) return;
+    await consumeFreeUse();
+  };
+
   const runPhoto = async (base64: string) => {
-    if (!(await ensureUsage())) return;
+    if (!(await canStartIdentification())) return;
     setAnalyzing(true);
     try {
       const result = await identifyPhoto(base64);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await recordSuccessfulUse();
       router.replace({
         pathname: '/result',
         params: {
@@ -121,12 +128,13 @@ export default function Identify() {
         {
           text: 'Run sample',
           onPress: async () => {
-            if (!(await ensureUsage())) return;
+            if (!(await canStartIdentification())) return;
             setAnalyzing(true);
             try {
-              // Use a tiny placeholder spectrogram-style PNG (1x1 base64). Backend will return Unknown — acceptable for preview.
+              // Tiny placeholder spectrogram-style PNG. Backend may return "Unknown" — acceptable for preview.
               const SAMPLE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=';
               const result = await identifySound(SAMPLE);
+              await recordSuccessfulUse();
               router.replace({
                 pathname: '/result',
                 params: { type: 'sound', payload: JSON.stringify(result) },
