@@ -1,0 +1,44 @@
+{
+  "summary": "Home page perfection pass (iteration 6) — ALL 8 requirements PASS. Verified: (1) Owl FAB stays pinned at bottom:100, right:16 during scroll (top:759 unchanged from top to bottom of scroll). (2) 3-stop scrim gradient renders correctly on Bird of the Day, category cards, and article cards — title/CTA text legible on bright photos including the green hummingbird and forest images. (3) Card language is consistent — 20px radius, 20px screen padding, dark scrim, sage CTAs across BOTD, categories, articles. Articles are no longer edge-to-edge. (4) Section order verified by y-position: search-bar(70) → identify-hero(302) → bird-of-day(502) → birds-near-you(794) → popular(1092) → explore(1410). (5) Bird of the Day shows 'FEATURED TODAY / American Robin / Wikipedia hook / Read more' and is deterministic by day-of-year. (6) 'Active in May' sage subtitle visible under 'Birds Near You'. (7) Entrance animation: header paints immediately, sections stagger in with FadeInDown 50/100/150/200/250/300ms delays. (8) Search bar shows ONLY 'Search 11,145 species…' + arrow icon — NO '216 instant' lightning badge. Regression: chip filter works (hummingbirds chip → 1 article), FAB tap navigates to /chat correctly, all sections present and tappable.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Home — Explore article cards",
+        "issues": [
+          "On the brightest article image (green/yellow hummingbird), the eyebrow line 'FEEDERS, FLOWERS, FAST WINGS' has slightly reduced contrast where it overlaps the bird's bright belly/wing. Title and CTA remain fully legible. The 3-stop scrim (0.55 at 0.45 location) handles the lower portion well; eyebrow lives in the lighter top zone. Minor — could nudge scrim mid-stop slightly higher or boost eyebrow weight if perfect legibility is required."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      {
+        "component": "Reanimated Animated.View (Owl FAB wrapper)",
+        "issue": "Web console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Reference: /app/frontend/app/(tabs)/index.tsx:368 — pointerEvents=\"box-none\" is passed as a prop instead of inside style={{ pointerEvents: 'box-none' }}. Note: React Native still officially supports the prop form on native; warning is web-only via react-native-web. Same warning appears on inner View at line 377 and inner View at line 211 (scrim absoluteFillObject). Not a blocker for native, but cleans up web console."
+      },
+      {
+        "component": "shadow* style props",
+        "issue": "Web console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\"'. Likely originates from styles.owlPress (shadowColor/shadowOpacity/shadowRadius/shadowOffset at lines 663-667). On native these are still the correct API; only react-native-web warns. Consider conditional Platform.select if web warnings need to be silenced, but on-device behavior is correct."
+      }
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_6.json"],
+  "action_items": [
+    "OPTIONAL: To eliminate the web-console deprecation warnings, move pointerEvents=\"box-none\" into style={{ pointerEvents: 'box-none' }} on the Animated.View wrapping the Owl FAB (line 368) and the inner View glow (line 377), and inside scrim LinearGradients where pointerEvents=\"none\" is set as a prop (lines 211, 256, 344). Same for shadow* on styles.owlPress — wrap with Platform.OS === 'web' ? { boxShadow: ... } : { shadowColor, shadowOpacity, ... }. None of these affect functionality or the iOS/Android build.",
+    "OPTIONAL: For the bright hummingbird article eyebrow, consider raising the middle scrim stop opacity slightly (e.g., 'rgba(10,11,10,0.65)' at 0.4) or adding a subtle text-shadow to the eyebrow Text style. Title is already perfectly readable; this is polish-only."
+  ],
+  "critical_code_review_comments": [
+    "Bird-of-the-Day uses Math.floor(diff/86_400_000) with diff from new Date(year,0,0) — this correctly yields a 1-indexed day-of-year that is stable for the calendar day. Good.",
+    "ScrollView contentContainerStyle paddingBottom = TAB_BAR_HEIGHT(84) + 16 + FAB_SIZE(56) + 24 = 180px. The review request mentions 196 explicitly; the actual computed value is 180. In practice the last article 'Backyard Poultry, Honestly' bottom (735) clears the FAB top (759) by 24px in a 915px viewport, so the spacing is sufficient. No functional issue, but if main agent intends an exact 196 token, the constant breakdown can be adjusted (e.g., bump breathing gap to 16+16=32 or FAB offset to 100+16).",
+    "SCRIM_COLORS and SCRIM_LOCATIONS are correctly shared constants applied to BOTD, category cards, and article cards — single source of truth as the review requested.",
+    "All interactive elements expose testID (home-search-bar, home-bird-of-day, section-birds-near-you, section-popular, section-explore, explore-chip-*, article-*, category-*, home-owl-chat-button, home-photo-id-button, home-sound-id-button, home-settings-button, home-premium-button). Excellent test surface."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not tested per request)", "frontend": "100% (8/8 requirements + 5/5 regression checks pass)"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Home page testing requires bypassing onboarding (4× Continue + 1× 'Get Started' button text) then closing paywall via [data-testid=\"paywall-close-button\"]. Use viewport 412x915. The Home ScrollView is nested inside SafeAreaView; horizontal mouse.wheel events at center (206,450) successfully drive vertical scroll on the web preview. Owl FAB is fixed-positioned absolute on the outer root <View>, so it remains at viewport top:759 regardless of ScrollView offset. Search bar reads 'Search 11,145 species…' (indexSize().toLocaleString()) — main-agent's bird index currently has 11,145 species; previous '216 instant' badge has been fully removed.",
+  "rca_of_issue": "N/A — no functional issues found. The two minor items are web-only console deprecation warnings (pointerEvents-as-prop, shadow* style props), originating from react-native-web's stricter API checking; native iOS/Android builds are unaffected."
+}
