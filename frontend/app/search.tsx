@@ -61,6 +61,7 @@ export default function SearchScreen() {
               returnKeyType="search"
               autoCorrect={false}
               autoCapitalize="words"
+              autoFocus
               testID="search-input"
               onSubmitEditing={() => Keyboard.dismiss()}
             />

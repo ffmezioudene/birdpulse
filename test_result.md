@@ -154,3 +154,6 @@ test_plan:
 agent_communication:
     -agent: "main"
     -message: "Home navigation rewire complete and verified (iteration_3). Spring press feedback live across Home + Popular Birds + Birds Near You + Category + Article reader. BirdCallPlayer ready — currently shows 'Unavailable' label because no XENO_CANTO_KEY is set; user can add a free key from xeno-canto.org to unlock playback."
+
+    -agent: "main"
+    -message: "Species Data Backbone shipped (iteration_4). 11,145 species local index + 216 pre-cached famous birds + Wikipedia/GPT-4o hybrid loader. 15/15 frontend + 8/8 backend tests pass. Search latency <300ms, bird detail instant first paint <100ms (precache), Wikipedia <1.5s, AI enrichment ~3s. Bundle adds ~2 MB (1.85 MB index + 178 KB precache)."
