@@ -376,9 +376,15 @@ async def xenocanto(species: str, limit: int = 3):
         }
 
     url = "https://xeno-canto.org/api/3/recordings"
-    # Accept either common name (en:"...") or scientific name (raw token).
-    is_latin = bool(re.match(r"^[A-Z][a-z]+ [a-z]+$", species.strip()))
-    query = species.strip() if is_latin else f'en:"{species}"'
+    # v3 ONLY accepts tagged queries. Parse "Genus species" → "gen:Genus sp:species".
+    # If we got a single token or English name, use en:"..." tag instead.
+    s = species.strip()
+    is_latin = bool(re.match(r"^[A-Z][a-z]+\s+[a-z\-]+$", s))
+    if is_latin:
+        gen, sp = s.split(None, 1)
+        query = f"gen:{gen} sp:{sp}"
+    else:
+        query = f'en:"{s}"'
     params = {"query": query, "key": key, "per_page": limit}
     try:
         async with httpx.AsyncClient(timeout=15) as http:
@@ -611,7 +617,7 @@ async def enrich_bird(req: EnrichRequest):
 
     Cached client-side after first call so we only pay once per bird per device.
     """
-    api_key = os.environ.get("EMERGENT_LLM_KEY") or os.environ.get("OPENAI_API_KEY")
+    api_key = LLM_KEY  # user's OPENAI_API_KEY when present, else EMERGENT_LLM_KEY
     if not api_key:
         raise HTTPException(status_code=500, detail="LLM key not configured")
 
@@ -655,7 +661,7 @@ async def enrich_bird(req: EnrichRequest):
     chat = (
         LlmChat(api_key=api_key, session_id=session_id,
                 system_message="You are an ornithology field-guide author.")
-        .with_model("openai", "gpt-4o")
+        .with_model(VISION_MODEL_PROVIDER, VISION_MODEL_NAME)
     )
     try:
         reply = await chat.send_message(UserMessage(text=prompt))
