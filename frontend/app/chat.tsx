@@ -12,7 +12,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
@@ -35,14 +35,27 @@ const SUGGESTIONS = [
 
 export default function ChatScreen() {
   const router = useRouter();
-  const [messages, setMessages] = useState<Msg[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content:
-        "Hi — I'm your birding companion. Tell me where you are or what you've seen and I'll help you find more.",
-    },
-  ]);
+  const params = useLocalSearchParams<{ birdId?: string; birdName?: string; birdSci?: string }>();
+  const birdContext = params.birdName
+    ? { id: String(params.birdId ?? ''), name: String(params.birdName), sci: String(params.birdSci ?? '') }
+    : null;
+
+  const [messages, setMessages] = useState<Msg[]>(() =>
+    birdContext
+      ? [{
+          id: 'welcome',
+          role: 'assistant',
+          content: `Hi — I'm your birding companion. We're looking at the ${birdContext.name}${
+            birdContext.sci ? ` (${birdContext.sci})` : ''
+          }. Ask me anything: how to attract it, how to tell it apart from look-alikes, when it's most active, or whether it's rare in your area.`,
+        }]
+      : [{
+          id: 'welcome',
+          role: 'assistant',
+          content:
+            "Hi — I'm your birding companion. Tell me where you are or what you've seen and I'll help you find more.",
+        }]
+  );
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -82,7 +95,10 @@ export default function ChatScreen() {
     setLoading(true);
     try {
       const month = new Date().toLocaleString('en-US', { month: 'long' });
-      const res = await chat(content, sessionId || undefined, {
+      const prefix = birdContext
+        ? `[Context: User is reading about ${birdContext.name} (${birdContext.sci}). Answer in the context of this species.]\n`
+        : '';
+      const res = await chat(prefix + content, sessionId || undefined, {
         latitude: coords?.lat,
         longitude: coords?.lng,
         month,

@@ -628,16 +628,27 @@ async def enrich_bird(req: EnrichRequest):
         '  "howToIdentify": "field-mark paragraph",\n'
         '  "size": "length in cm",\n'
         '  "wingspan": "wingspan in cm or m",\n'
+        '  "weight": "typical adult weight (g or kg)",\n'
+        '  "lifespan": "typical lifespan in the wild (e.g. 3-5 years)",\n'
         '  "wingShape": "short description",\n'
         '  "diet": "what they eat",\n'
         '  "habitat": "where they live",\n'
-        '  "nestingBehavior": "nesting paragraph",\n'
+        '  "nestingBehavior": "nest type, eggs (count/color), incubation, fledging — concise",\n'
+        '  "behavior": "flight pattern, foraging style, social/solitary, when most vocal (dawn/dusk)",\n'
+        '  "sexDifferences": "how to tell male vs female; breeding vs non-breeding plumage if relevant",\n'
         '  "migrationStatus": "resident or migrant summary",\n'
         '  "rangeSummary": "where in the world",\n'
-        '  "conservationStatus": "IUCN status word(s)",\n'
+        '  "seasonality": "when (months) and where they are most often seen",\n'
+        '  "conservationStatus": "IUCN status word(s), e.g. Least Concern",\n'
+        '  "populationTrend": "Increasing | Stable | Decreasing | Unknown",\n'
+        '  "confusedWith": [\n'
+        '    { "commonName": "...", "scientificName": "...", "distinguishing": "one-line how to tell them apart" }\n'
+        "  ],\n"
         '  "funFacts": ["3 short bullet facts"]\n'
         "}\n"
-        "Keep paragraphs concise. If unsure of a value, return an empty string."
+        "Provide 3-4 entries in confusedWith for visually similar species in the same family/region. "
+        "If a value is genuinely unknown for this species, return an empty string (or empty array). "
+        "Keep paragraphs concise (under ~200 chars each)."
     )
 
     session_id = f"enrich-{uuid.uuid4()}"

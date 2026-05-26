@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 7 — Richer Bird Detail upgrade FULLY VERIFIED end-to-end. Backend /api/birds/enrich returns 200 with ALL 7 new fields populated for Northern Cardinal: behavior, sexDifferences, weight (42-48 g), lifespan (3-6 years), seasonality, populationTrend ('Stable'), confusedWith (4 items: Pyrrhuloxia, Scarlet Tanager, Summer Tanager, Vermilion Flycatcher) — plus pre-existing howToIdentify/diet/habitat/nestingBehavior/funFacts/conservationStatus ('Least Concern'). Frontend Description tab default → after ~15s enrichment lands, ALL 9 expandable cards present (Overview, How to identify, Key facts, Diet, Habitat, Behavior & personality, Male vs female, Nesting, When to look). Conservation card shows 'Least Concern' with green dot + 'Stable' trend chip with trending icon. Scientific classification card shows all 4 rows correctly (Order: Passeriformes, Family: Cardinalidae (Cardinals and Allies), Genus: Cardinalis, Species: Cardinalis cardinalis in italic). 'Often confused with' horizontal scroller renders 4 species cards with real Wikipedia photos via SpeciesThumb, common name, and distinguishing tip — tapping confused card (Scarlet Tanager) successfully navigates to /bird/scarlet-tanager and that page enriches correctly. 'Did you know?' card lists 3 fun facts with sparkles icons. Ask Owl CTA card visible, sage-tinted, testID='bird-ask-owl' — tapping navigates to /chat?birdId=northern-cardinal&birdName=Northern%20Cardinal&birdSci=Cardinalis%20cardinalis. Chat welcome message correctly reads 'We're looking at the Northern Cardinal (Cardinalis cardinalis). Ask me anything: how to attract it, how to tell it apart from look-alikes...' Range tab shows 'Where to find it' card with rangeSummary + Seasonality line, 'Activity by month' card with sage 'May today' pill, all 12 month pills (Jan-Dec, testID='bird-month-{lower}'), current month May outlined in sage, helper 'Most likely seen this month.' when current month active and 'Switch months to see how the range shifts.' when another month tapped. Regression: bird detail loads INSTANTLY for precached Northern Cardinal (hero image + name visible immediately), all 4 tabs (Photos/Description/Sounds/Range) switch correctly, back button works (testID='bird-detail-back'). Cache version bump verified — localStorage shows only 'bird:ai:v2:*' and 'bird:detail:v2:*' keys, no leftover v1 keys. Backend pytest: 8/8 passing (6 regression + 2 new enrich-schema tests).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* style props (web warning)",
+        "issue": "Web console warning '\"shadow*\" style props are deprecated. Use \"boxShadow\"' still appears (pre-existing from prior iterations, not introduced by this change). React-native-web specific; native iOS/Android unaffected."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_7.json",
+    "/app/backend/tests/test_enrich_schema.py",
+    "/app/test_reports/pytest/iteration_7.xml",
+    "/app/test_reports/pytest/iteration_7_enrich.xml"
+  ],
+  "action_items": [
+    "OPTIONAL polish: The 'Offline ready' badge (detail.source === 'precached') flashes for ~1 frame on first paint then disappears because loadFullDetail unconditionally sets detail.source = 'live' (or 'partial') after enrichment finishes. If you want the badge to stay visible after enrichment for precached species, capture wasPrecached at instant-detail time and key the badge on that flag instead of the mutable detail.source. Not blocking — purely a polish nit.",
+    "MINOR (review request wording): The review request listed 'testID=\"confused-birdscan-pro\"' which appears to be a typo. Actual implementation uses 'confused-{scientific-name-lowercased-with-dashes}' (e.g. 'confused-cardinalis-sinuatus', 'confused-piranga-olivacea'). This is the correct/sensible pattern — confirming the testID format with main agent for documentation accuracy."
+  ],
+  "critical_code_review_comments": [
+    "bird/[id].tsx is 693 lines — getting close to the 700-line soft limit. The Description tab + its sub-components (ExpandableCard, ClassificationRow, ConfusedCard, AskOwlCard, IUCN_COLORS) could be moved into /app/frontend/src/components/bird-description/ for better separation. Not urgent.",
+    "iucnColor() supports 7 IUCN buckets (least concern → extinct) — good coverage. Fallback uses colors.primary for unknown statuses; consider colors.textTertiary so unknown values don't look like a real category.",
+    "ConfusedCard lookup via lookupByScientific then lookupByCommon is solid; falls back to a leaf icon if neither resolves — graceful.",
+    "Range tab activeMonth state is independent from system date, so tapping months changes UI highlight; current-month outlined ring (monthPillToday) stays visible underneath when activeMonth != currentMonth — nice progressive disclosure.",
+    "Cache key uses VERSION='v2' on BOTH cacheKey (bird:detail:v2:*) and aiCacheKey (bird:ai:v2:*) — verified at runtime that no v1 keys remain after upgrade. Bump is correct.",
+    "fetchAi catches errors and stores null in cache only if request succeeds — correct, no negative caching.",
+    "Backend enrich endpoint reliably returns the new 7 fields for Northern Cardinal in ~6s — well within the 15s budget."
+  ],
+  "updated_files": ["/app/backend/tests/test_enrich_schema.py"],
+  "success_rate": {"backend": "100% (8/8 pytest)", "frontend": "100% — all 9 acceptance items + 3 regression items pass"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Bird detail page is at /bird/{id}; mobile viewport 412x915 works. Onboarding bypass: tap 'Continue' x4 + 'Get Started' then close paywall via [data-testid=\"paywall-close-button\"]. To validate AI enrichment, wait ~15s after page load before checking new section text. Cache lives in localStorage under bird:detail:v2:* and bird:ai:v2:* — to force a refetch, clear localStorage. Confused-with cards have testID='confused-{scientific-name-with-dashes-lowercased}' (e.g. confused-cardinalis-sinuatus). Ask Owl CTA testID='bird-ask-owl' navigates to /chat with birdId/birdName/birdSci query params; chat.tsx greets with bird context when params present.",
+  "rca_of_issue": "N/A — no functional issues. One polish nit (precached badge flashes off after enrichment) and one documentation discrepancy (testID naming in the review request appears to be a typo)."
+}

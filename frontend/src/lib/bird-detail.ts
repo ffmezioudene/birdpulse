@@ -11,10 +11,16 @@ import { getSpecies, getPrecachedDetail, type Species } from './catalog';
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const VERSION = 'v1';
+const VERSION = 'v2'; // bump when AI schema changes
 
 const cacheKey = (id: string) => `bird:detail:${VERSION}:${id}`;
 const aiCacheKey = (id: string) => `bird:ai:${VERSION}:${id}`;
+
+export type ConfusedWith = {
+  commonName: string;
+  scientificName: string;
+  distinguishing: string;
+};
 
 export type RichBirdDetail = {
   id: string;
@@ -33,12 +39,19 @@ export type RichBirdDetail = {
   howToIdentify?: string;
   size?: string;
   wingspan?: string;
+  weight?: string;
+  lifespan?: string;
   wingShape?: string;
   diet?: string;
+  behavior?: string;
+  sexDifferences?: string;
   nestingBehavior?: string;
   migrationStatus?: string;
   rangeSummary?: string;
+  seasonality?: string;
   conservationStatus?: string;
+  populationTrend?: string;
+  confusedWith?: ConfusedWith[];
   funFacts?: string[];
   // Meta
   source: 'precached' | 'cache' | 'live' | 'partial';
@@ -56,9 +69,10 @@ type WikiResult = {
 type AiEnrichment = Partial<
   Pick<
     RichBirdDetail,
-    | 'howToIdentify' | 'size' | 'wingspan' | 'wingShape' | 'diet'
-    | 'habitat' | 'nestingBehavior' | 'migrationStatus' | 'rangeSummary'
-    | 'conservationStatus' | 'funFacts'
+    | 'howToIdentify' | 'size' | 'wingspan' | 'weight' | 'lifespan' | 'wingShape'
+    | 'diet' | 'behavior' | 'sexDifferences' | 'habitat' | 'nestingBehavior'
+    | 'migrationStatus' | 'rangeSummary' | 'seasonality' | 'conservationStatus'
+    | 'populationTrend' | 'confusedWith' | 'funFacts'
   >
 > & { shortDescription?: string };
 
@@ -176,13 +190,20 @@ export async function loadFullDetail(
         detail.howToIdentify ||= ai.howToIdentify;
         detail.size ||= ai.size;
         detail.wingspan ||= ai.wingspan;
+        detail.weight ||= ai.weight;
+        detail.lifespan ||= ai.lifespan;
         detail.wingShape ||= ai.wingShape;
         detail.diet ||= ai.diet;
+        detail.behavior ||= ai.behavior;
+        detail.sexDifferences ||= ai.sexDifferences;
         detail.habitat ||= ai.habitat;
         detail.nestingBehavior ||= ai.nestingBehavior;
         detail.migrationStatus ||= ai.migrationStatus;
         detail.rangeSummary ||= ai.rangeSummary;
+        detail.seasonality ||= ai.seasonality;
         detail.conservationStatus ||= ai.conservationStatus;
+        detail.populationTrend ||= ai.populationTrend;
+        if (ai.confusedWith?.length) detail.confusedWith = ai.confusedWith;
         if (ai.funFacts?.length) detail.funFacts = ai.funFacts;
         onUpdate({ ...detail });
       }
