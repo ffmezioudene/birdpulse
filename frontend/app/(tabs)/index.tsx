@@ -30,6 +30,7 @@ import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import { getFreeUses, isProEffective } from '@/src/lib/state';
 import { PressableScale } from '@/src/components/PressableScale';
 import { BirdCallPlayer } from '@/src/components/BirdCallPlayer';
+import { SpeciesThumb } from '@/src/components/SpeciesThumb';
 
 export default function Home() {
   const router = useRouter();
@@ -202,11 +203,9 @@ export default function Home() {
                     testID={`popular-bird-${b.id}`}
                   >
                     {pre?.thumb ? (
-                      <Image source={{ uri: pre.thumb }} style={styles.popImage} />
+                      <SpeciesThumb species={b} fullWidth height={120} radius={0} />
                     ) : (
-                      <View style={[styles.popImage, styles.popImagePlaceholder]}>
-                        <Ionicons name="leaf-outline" size={26} color={colors.primary} />
-                      </View>
+                      <SpeciesThumb species={b} fullWidth height={120} radius={0} />
                     )}
                     <View style={styles.popBody}>
                       <Text style={styles.popName} numberOfLines={1}>{b.c}</Text>

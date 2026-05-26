@@ -1,0 +1,54 @@
+{
+  "summary": "BirdLens 'real thumbnails everywhere' (Iteration 5) — verified end-to-end on web preview @ 412x915. ALL 12 review-request checks PASS. Backend POST /api/birds/thumbs returns 200 in 0.54s for the exact 3-item curl spec — `a` and `b` resolve to real upload.wikimedia.org URLs, `c` returns null. 8/8 pytest cases pass (test_thumbs_endpoint.py): basic 3-item case, <3s latency, 80-unique-species batch under 8s with >=70 hits, items>80 truncated to 80, empty {} payload returns {}, missing items key returns {}, common-name fallback path works, image URL serves real image/* content type when fetched with the same User-Agent the backend uses. Frontend: /search shows Wikipedia thumbnails on every row — 10/10 'African*' rows (African Rail, Crake, Hobby, Pipit, Pitta, Snipe, Swift, Citril, Cuckoo, Darter all from upload.wikimedia.org) and 10/10 'European*' rows (Robin, Starling, Bee-eater, Goldfinch, Greenfinch, Shag, Serin, Roller, Stonechat, Turtle-Dove). Tapping European Robin → bird-detail-screen renders with hero, name, Erithacus rubecula, Old World Flycatchers · Passeriformes, Wikipedia 'Overview' paragraph in ~1.5s, GPT-4o enrichment chip 'Enriching with AI…' visible. Back to /search → cached rows render instantly (still wiki=1 on all 5 inspected). /popular-birds (2-col grid) shows 22+ real photos (Adelie Penguin, Allen's Hummingbird, American Avocet, American Bittern, American Coot, American Crow — all real Wikipedia/precached imagery). /category/songbirds list: 8/8 inspected rows show Wikipedia photos (American Crow, Dipper, Goldfinch, Redstart, Robin, Tree Sparrow, Baltimore Oriole, Barn Swallow). /birds-near-you 2-col + bottom species cells all serve photos. Home page: 12 wikimedia + 12 unsplash images on first paint (precached birds row INSTANT as expected). 9 /api/birds/thumbs batch calls captured during the session, all returned HTTP 200. Lazy batching with 80ms flush is working — first batch fires within ~100ms of typing. SpeciesThumb's `expo-image` cachePolicy='memory-disk' makes the back-from-detail return instant. No React Native red screen, no JS errors. Carried-over RN-Web warnings remain (shadow*/pointerEvents) — cosmetic only, not introduced by this iteration.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/birds/thumbs",
+        "issue": "If a single batch contains duplicate scientific names (multiple items sharing the same `sci`), only the LAST item.id gets the URL — earlier dup ids fall to null. Source: `sci_map = {it.get('sci'): it.get('id') for it in items}` (server.py:450). Same for common_map (line 451). Catalog has unique sci per species so real usage is unaffected, but worth a comment or `defaultdict(list)` if duplicates ever become possible."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "RN-Web style deprecations (carried over)",
+        "issue": "Console still warns: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' and 'props.pointerEvents is deprecated. Use style.pointerEvents'. Cosmetic, not new in this iteration. Reference: /app/frontend/src/theme/* and onboarding.tsx:97."
+      },
+      {
+        "component": "expo-av (deprecated, carried from prior iteration)",
+        "issue": "BirdCallPlayer still imports `expo-av` (Audio.Sound). Should migrate to `expo-audio` per Expo SDK 51+. Reference: /app/frontend/src/components/BirdCallPlayer.tsx. Not blocking this iteration."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_thumbs_endpoint.py",
+    "/app/test_reports/pytest/thumbs_results.xml",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "action_items": [
+    "OPTIONAL (LOW): In server.py POST /api/birds/thumbs (lines 450–451), the dict-based sci_map/common_map collapses duplicate sci entries — last-id-wins. Switch to {sci: [ids]} if duplicates can ever happen. Real catalog is dedup'd so this is theoretical.",
+    "FUTURE (carried): Migrate BirdCallPlayer from `expo-av` to `expo-audio` and fix RN-Web `shadow*` / `pointerEvents` deprecation warnings in theme + onboarding."
+  ],
+  "critical_code_review_comments": [
+    "POST /api/birds/thumbs (server.py:429-545) correctly batches up to 50 Wikipedia titles per upstream request, walks `normalized` + `redirects` to map binomial → final page title, then runs a common-name fallback wave for misses. Confirmed-empty species return explicit null so the client can cache 'no image' permanently — exactly what SpeciesThumb's `status === 'none'` leaf branch depends on. Polite User-Agent with contact email set. Production-grade.",
+    "SpeciesThumb.tsx (lines 49-69) renders three states cleanly: image when URL ready, leaf fallback ONLY when status === 'none' (i.e. after the lookup resolved with no Wikipedia image), shimmer otherwise. expo-image's cachePolicy='memory-disk' + recyclingKey=species.id is the right choice for long FlatLists; transition=220 and a static BLURHASH placeholder give a polished swap-in.",
+    "thumb-cache.ts (lines 74-118) — 80ms debounced flush + 40-per-batch backend request is a sensible balance for a typing-driven search list. AsyncStorage persistence keyed under `thumbs:v1` with 4000-entry cap bounds storage growth. Three-tier resolution (precached → memory/AsyncStorage → batch fetch) yields the observed INSTANT precached row + ~250-400ms lazy fill for fresh species.",
+    "Network audit: 9 /api/birds/thumbs calls during a full session covering /search (African + European), /popular-birds, /category/songbirds, /birds-near-you, /bird/{id}, and Home. All 200. No 4xx/5xx from the new endpoint."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_thumbs_endpoint.py (new — 8 pytest cases covering the spec curl, <3s latency, 80-item batch, >80 truncation, empty/missing payload, common-name fallback, and image content-type verification)"
+  ],
+  "success_rate": {
+    "backend": "100% — 8/8 pytest cases pass (test_thumbs_endpoint.py)",
+    "frontend": "100% — 12/12 review-request checks pass (1-2 backend curl + pytest; 3-12 frontend search/detail/popular/category/near-you/home)"
+  },
+  "seed_data_creation": "None. localStorage['birdlens.onboarding.done']='true' via add_init_script to skip onboarding.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Real-thumbnail feature is verified end-to-end. Endpoint contract: POST /api/birds/thumbs body {items:[{id,sci,common}]} → {id: url|null}. Items capped at 80 server-side. Frontend resolves thumbs via 3-tier (precache → AsyncStorage `thumbs:v1` → 40-per-batch fetch with 80ms debounce). SpeciesThumb shows shimmer while unknown/loading, expo-image with memory-disk cache when ready, leaf-outline ONLY when status='none' (confirmed-no-image). Useful testIDs in /search: search-screen, search-input, search-clear, search-result-{id}, search-back, instant-badge. Other screens: popular-birds-screen, popular-{id}, popular-filter-{cat}, category-bird-{id}, near-bird-{id}, bird-detail-screen, home-search-bar. If iterating on the cache, run test_thumbs_endpoint.py first as a fast regression sweep — it covers the curl spec verbatim plus 6 edge cases.",
+  "rca_of_issue": "N/A — no bugs found. The 400-status console errors observed during the run are for missing `/assets/?unstable_path=...` files (pre-existing static asset path issue, not related to this iteration)."
+}

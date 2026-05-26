@@ -10,6 +10,7 @@ import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { PressableScale } from '@/src/components/PressableScale';
 import { BirdCallPlayer } from '@/src/components/BirdCallPlayer';
 import { FeatherWave } from '@/src/components/FeatherWave';
+import { SpeciesThumb } from '@/src/components/SpeciesThumb';
 import {
   CATEGORIES as CATALOG_CATEGORIES,
   popularSpecies,
@@ -82,11 +83,9 @@ export default function BirdsNearYou() {
                 testID={`near-bird-${item.id}`}
               >
                 {pre?.thumb ? (
-                  <Image source={{ uri: pre.thumb }} style={styles.birdImg} />
+                  <SpeciesThumb species={item} fullWidth height={130} radius={0} />
                 ) : (
-                  <View style={[styles.birdImg, styles.birdImgPlaceholder]}>
-                    <Ionicons name="leaf-outline" size={28} color={colors.primary} />
-                  </View>
+                  <SpeciesThumb species={item} fullWidth height={130} radius={0} />
                 )}
                 <View style={styles.birdBody}>
                   <Text style={styles.birdName} numberOfLines={1}>{item.c}</Text>

@@ -9,12 +9,8 @@ import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { PressableScale } from '@/src/components/PressableScale';
 import { BirdCallPlayer } from '@/src/components/BirdCallPlayer';
 import { FeatherWave } from '@/src/components/FeatherWave';
-import {
-  CATEGORIES as CATALOG_CATEGORIES,
-  allSpecies,
-  getPrecachedDetail,
-  precacheSize,
-} from '@/src/lib/catalog';
+import { SpeciesThumb } from '@/src/components/SpeciesThumb';
+import { popularSpecies, allSpecies, getPrecachedDetail, CATEGORIES as CATALOG_CATEGORIES, precacheSize } from '@/src/lib/catalog';
 
 const FILTERS = [{ id: 'all', title: 'All' }, ...CATALOG_CATEGORIES.map((c) => ({ id: c.id, title: c.title }))];
 
@@ -114,11 +110,9 @@ export default function PopularBirds() {
                 testID={`popular-${item.id}`}
               >
                 {pre?.thumb ? (
-                  <Image source={{ uri: pre.thumb }} style={styles.img} />
+                  <SpeciesThumb species={item} fullWidth height={130} radius={0} />
                 ) : (
-                  <View style={[styles.img, styles.imgPlaceholder]}>
-                    <Ionicons name="leaf-outline" size={26} color={colors.primary} />
-                  </View>
+                  <SpeciesThumb species={item} fullWidth height={130} radius={0} />
                 )}
                 <View style={styles.body}>
                   <Text style={styles.name} numberOfLines={1}>{item.c}</Text>

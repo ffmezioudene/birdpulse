@@ -9,6 +9,7 @@ import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { PressableScale } from '@/src/components/PressableScale';
 import { BirdCallPlayer } from '@/src/components/BirdCallPlayer';
 import { FeatherWave } from '@/src/components/FeatherWave';
+import { SpeciesThumb } from '@/src/components/SpeciesThumb';
 import {
   categoryById,
   speciesInCategory,
@@ -58,13 +59,7 @@ export default function CategoryScreen() {
                 pressedScale={0.985}
                 style={styles.rowMain}
               >
-                {pre?.thumb ? (
-                  <Image source={{ uri: pre.thumb }} style={styles.img} />
-                ) : (
-                  <View style={[styles.img, styles.imgPlaceholder]}>
-                    <Ionicons name="leaf-outline" size={20} color={colors.primary} />
-                  </View>
-                )}
+                <SpeciesThumb species={item} size={64} radius={12} />
                 <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                   <Text style={styles.name} numberOfLines={1}>{item.c}</Text>
                   <Text style={styles.latin} numberOfLines={1}>{item.s}</Text>

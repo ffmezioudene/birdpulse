@@ -426,6 +426,125 @@ async def bird_detail(bird_id: str):
 
 # ---------------------------- Wikipedia proxy -----------------------------
 
+@api_router.post("/birds/thumbs")
+async def bulk_thumbs(payload: dict):
+    """Batch thumbnail lookup for species rows.
+
+    Body: { "items": [{ "id": "...", "sci": "Cardinalis cardinalis", "common": "Northern Cardinal" }, ...] }
+    Response: { "<id>": "<https-image-url>|null", ... }
+
+    Uses Wikipedia's MediaWiki API which accepts up to 50 titles per request
+    (with `redirects=1`, scientific binomials resolve to the common-name page).
+    We try scientific name first; if the page has no image we retry once with
+    the common name. Confirmed-empty species are returned as null so the
+    client can cache the fact and not re-ask.
+    """
+    items = payload.get("items") or []
+    if not isinstance(items, list) or not items:
+        return {}
+
+    items = items[:80]
+    out: dict[str, Optional[str]] = {}
+
+    # Build two lookup waves: scientific first, then common-name fallback.
+    sci_map = {it.get("sci", "").strip(): it.get("id") for it in items if it.get("sci")}
+    common_map = {it.get("common", "").strip(): it.get("id") for it in items if it.get("common")}
+
+    headers = {
+        "User-Agent": "BirdLensApp/1.0 (https://birdlens.app; contact@birdlens.app)",
+        "Accept": "application/json",
+    }
+
+    async def batch_lookup(titles: list[str]) -> dict[str, str]:
+        if not titles:
+            return {}
+        url = "https://en.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "format": "json",
+            "prop": "pageimages",
+            "pithumbsize": "240",
+            "redirects": "1",
+            "titles": "|".join(titles),
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15, headers=headers) as http:
+                r = await http.get(url, params=params)
+                r.raise_for_status()
+                data = r.json()
+        except Exception as e:
+            logger.warning("bulk thumbs failed: %s", e)
+            return {}
+
+        q = data.get("query") or {}
+        # Build maps from the response.
+        # normalized: list of {from, to}; redirects: list of {from, to}
+        forwards: dict[str, str] = {}
+        for n in q.get("normalized", []) or []:
+            forwards[n.get("from", "")] = n.get("to", "")
+        for n in q.get("redirects", []) or []:
+            forwards[n.get("from", "")] = n.get("to", "")
+
+        # Final title (after all redirects) → thumb URL
+        title_to_thumb: dict[str, str] = {}
+        for page in (q.get("pages") or {}).values():
+            t = page.get("title", "")
+            thumb = (page.get("thumbnail") or {}).get("source", "")
+            if t and thumb:
+                title_to_thumb[t] = thumb
+
+        # Walk redirects to find the final title for each input title.
+        def resolve(title: str) -> str:
+            seen = set()
+            cur = title
+            while cur in forwards and cur not in seen:
+                seen.add(cur)
+                cur = forwards[cur]
+            return cur
+
+        result: dict[str, str] = {}
+        for original in titles:
+            final = resolve(original)
+            url = title_to_thumb.get(final) or title_to_thumb.get(original)
+            if url:
+                result[original] = url
+        return result
+
+    # 1) Batch scientific names (Wikipedia keeps redirects from binomials).
+    sci_titles = list(sci_map.keys())
+    for i in range(0, len(sci_titles), 50):
+        chunk = sci_titles[i:i + 50]
+        hits = await batch_lookup(chunk)
+        for title, url in hits.items():
+            sid = sci_map.get(title)
+            if sid and sid not in out:
+                out[sid] = url
+
+    # 2) For ids that didn't resolve, fall back to common name (single-page lookups).
+    missing_common: list[str] = []
+    for it in items:
+        sid = it.get("id")
+        if sid and sid not in out and it.get("common"):
+            missing_common.append(it["common"])
+
+    if missing_common:
+        for i in range(0, len(missing_common), 50):
+            chunk = missing_common[i:i + 50]
+            hits = await batch_lookup(chunk)
+            for title, url in hits.items():
+                sid = common_map.get(title)
+                if sid and sid not in out:
+                    out[sid] = url
+
+    # 3) Confirm null for everything that still has no hit (so clients can cache).
+    for it in items:
+        sid = it.get("id")
+        if sid and sid not in out:
+            out[sid] = None  # explicit "looked up, no image"
+
+    return out
+
+
 @api_router.get("/wiki/summary")
 async def wiki_summary(title: str):
     """Server-side Wikipedia REST proxy with simple in-memory caching.

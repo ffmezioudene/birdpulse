@@ -12,6 +12,7 @@ import { colors, spacing, type, radii } from '@/src/theme';
 import { PressableScale } from '@/src/components/PressableScale';
 import { FeatherWave } from '@/src/components/FeatherWave';
 import { searchSpecies, hasPrecachedDetail, indexSize, getPrecachedDetail, type Species } from '@/src/lib/catalog';
+import { SpeciesThumb } from '@/src/components/SpeciesThumb';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -121,13 +122,7 @@ export default function SearchScreen() {
                 testID={`search-result-${item.id}`}
               >
                 <View style={styles.thumbWrap}>
-                  {pre?.thumb ? (
-                    <Image source={{ uri: pre.thumb }} style={styles.thumb} />
-                  ) : (
-                    <View style={[styles.thumb, styles.thumbPlaceholder]}>
-                      <Ionicons name="leaf-outline" size={20} color={colors.primary} />
-                    </View>
-                  )}
+                  <SpeciesThumb species={item} size={56} radius={12} />
                   {instant && <View style={styles.boltBadge} testID="instant-badge"><Ionicons name="flash" size={9} color="#0A0B0A" /></View>}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
