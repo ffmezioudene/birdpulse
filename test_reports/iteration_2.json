@@ -1,0 +1,52 @@
+{
+  "summary": "Frontend testing for BirdLens Home navigation rewire (PressableScale + BirdCallPlayer + ScreenHeader). All 10 critical navigation flows from the review request PASS on web preview @ 412x915. Home loads (after AsyncStorage onboardingDone=true bypass via init script); 'All' on Birds Near You navigates to birds-near-you-screen; 'All' on Popular Birds navigates to popular-birds-screen and the search input filters correctly ('cardinal' returns only Northern Cardinal, hides Blue Jay/Mallard); all 4 home category cards (songbirds, birds-of-prey, hummingbirds, waterfowl) navigate to /category/{id}; BNY category-link cards drill into category screen; article cards open /article/{id} with 4 KEEP READING related cards; Explore chips correctly filter the articles list (hummingbirds chip shows only the hummingbird-feeders article); Popular-bird card tap navigates to /bird/northern-cardinal; back-chevron returns to previous screen. Bird-call (XenoCanto) shows 'Unavailable' label — expected because XENO_CANTO_KEY is intentionally unset (documented in iteration_1). One real DOM issue found: nested <button> elements on web because BirdCallPlayer (a PressableScale) renders INSIDE the popular-bird PressableScale — produces React hydration error and means tapping the play-call button will also bubble navigation to the bird detail page.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Popular bird card (Home + popular-birds + birds-near-you + category screens)",
+        "issue": "BirdCallPlayer (a PressableScale/Pressable) is rendered INSIDE the outer card PressableScale, producing nested <button> elements on web. React logs: 'In HTML, <button> cannot be a descendant of <button>. This will cause a hydration error.' Functionally, tapping the play-call button will ALSO trigger the parent card's onPress (navigating away to /bird/{id}) on web because the click event bubbles. Fix: move BirdCallPlayer outside the parent PressableScale (e.g., absolute-position it as a sibling), or change one of the layers from Pressable to a plain View+gesture handler, or stopPropagation in BirdCallPlayer's onPress. Reference: /app/frontend/app/(tabs)/index.tsx:173-191, /app/frontend/app/popular-birds.tsx:91-107, /app/frontend/app/birds-near-you.tsx:66-83, /app/frontend/app/category/[id].tsx:44-65.",
+        "testID": "popular-bird-northern-cardinal / popular-bird-play-northern-cardinal",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "BirdCallPlayer → XenoCanto",
+        "issue": "Pressing play-call returns 'Unavailable' (label text after click was 'Unavailable'). Root cause confirmed in iteration_1 context: XENO_CANTO_KEY is intentionally unset, so /api/xenocanto returns empty recordings array. Not a regression — BirdCallPlayer handles the empty-recordings case correctly by showing 'Unavailable'. To actually hear bird calls in production, add XENO_CANTO_KEY to backend/.env.",
+        "affected_testIDs": ["popular-bird-play-northern-cardinal", "popular-northern-cardinal-play"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "RN-Web style deprecations",
+        "issue": "Console warns: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' (e.g. shadows.glowPrimary in src/theme) and 'props.pointerEvents is deprecated. Use style.pointerEvents' (onboarding.tsx footer SafeAreaView, etc.). Cosmetic but will become errors in future RN-Web. Reference: /app/frontend/src/theme/* and /app/frontend/app/onboarding.tsx:97."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_2.json",
+    "/app/test_reports/iteration_1.json (backend)"
+  ],
+  "action_items": [
+    "HIGH: Fix nested-button DOM issue — move BirdCallPlayer out of the parent PressableScale, or call e.stopPropagation()/preventDefault() inside BirdCallPlayer's onPress to prevent the parent card's navigation. This affects Home popular row + popular-birds grid + birds-near-you grid + category list. Currently on web, tapping Play also fires the card navigation.",
+    "OPTIONAL: Add XENO_CANTO_KEY to backend/.env so audio playback works end-to-end (currently every play attempt shows 'Unavailable' — not a frontend bug).",
+    "LOW: Migrate `shadow*` style props to `boxShadow` and `props.pointerEvents` to `style.pointerEvents` (RN-Web deprecation warnings)."
+  ],
+  "critical_code_review_comments": [
+    "(tabs)/index.tsx, popular-birds.tsx, birds-near-you.tsx, category/[id].tsx all nest a Pressable (BirdCallPlayer) inside another Pressable (the card). On native this kinda works (RN tries to be smart) but on web it produces an invalid DOM tree (button > button) and click events on the inner button bubble to the outer button, breaking the play-vs-navigate UX. Either reposition the player or stop propagation.",
+    "BirdCallPlayer relies on a setTimeout(150) after setAudioUrl to call player.play() — this is fragile. With expo-audio it is more reliable to listen for player status changes (status.isLoaded) and call play() once isLoaded === true. The current 150ms delay can miss the load on slow networks.",
+    "All sub-screens render <ScreenHeader/> inside their own root View, so when the destination of a Stack push is another screen with a header, two screen-header-back buttons exist in the DOM simultaneously during the animation (caused one selector-ambiguity in tests). Consider passing testID prop through differently or using `.last()` in tests."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "not tested this iteration",
+    "frontend": "100% navigation flows pass (10/10 requested flows). 1 DOM/UX bug found (nested buttons). Audio playback gated on missing XENO_CANTO_KEY (not a regression)."
+  },
+  "seed_data_creation": "None. Pre-set localStorage['birdlens.onboarding.done']='true' via add_init_script to skip onboarding (matches the spec).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 10 requested navigation flows verified working on web preview @ 412x915. To skip onboarding in tests: page.add_init_script(\"window.localStorage.setItem('birdlens.onboarding.done','true');\") then navigate to /. The expected testIDs match implementation exactly (section-birds-near-you-all, section-popular-all, category-{lowercased-id-with-dashes}, category-link-{Original-Case-Id}, popular-bird-{id}, popular-bird-play-{id} on Home; popular-{id} and popular-{id}-play on the popular-birds full screen). Bird-call returns 'Unavailable' because XENO_CANTO_KEY is unset. The KNOWN issue is nested <button> from BirdCallPlayer inside PressableScale card — should be fixed before claiming the row is fully production-ready.",
+  "rca_of_issue": "Nested-button DOM: PressableScale uses Pressable from react-native, which on react-native-web renders a native <button> element. Both the outer card and the inner BirdCallPlayer use PressableScale, producing <button data-testid='popular-bird-northern-cardinal'><button data-testid='popular-bird-play-northern-cardinal'>...</button></button>. React's HTML validator emits the hydration warning, and on a real user tap of the inner play button, the synthetic click event bubbles to the outer button → onPress fires for BOTH → user gets routed to /bird/{id} INSTEAD of (or in addition to) starting playback. Reproduction: Open Home, tap play-icon on the Northern Cardinal Popular card → observe navigation to bird detail page. Mitigation: (a) wrap BirdCallPlayer with View+stopPropagation; (b) move BirdCallPlayer to be a sibling absolute-positioned overlay; or (c) change the inner Pressable to use onPress with a custom onClickCapture that calls e.stopPropagation()."
+}

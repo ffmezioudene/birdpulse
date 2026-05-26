@@ -238,7 +238,7 @@ export const CATEGORIES = [
     image: 'https://images.unsplash.com/photo-1612095395498-5e2f3ae4d9a9?crop=entropy&cs=srgb&fm=jpg&q=85',
   },
   {
-    id: 'Birds_of_Prey',
+    id: 'Birds of Prey',
     title: 'Birds of Prey',
     image: 'https://images.pexels.com/photos/33349105/pexels-photo-33349105.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940',
   },
@@ -255,6 +255,7 @@ export const CATEGORIES = [
 ];
 
 export const EXPLORE_TOPICS = [
+  { id: 'all', title: 'All', icon: 'sparkles-outline' },
   { id: 'attract', title: 'Attracting Birds', icon: 'leaf-outline' },
   { id: 'hummingbirds', title: 'Hummingbirds', icon: 'flower-outline' },
   { id: 'migration', title: 'Migration', icon: 'compass-outline' },
@@ -264,21 +265,57 @@ export const EXPLORE_TOPICS = [
 export const EXPLORE_ARTICLES = [
   {
     id: 'identify-breeds',
+    topic: 'all',
     title: 'How to Identify Different Breeds',
     subtitle: 'A field guide for new birders',
     image: 'https://images.unsplash.com/photo-1569402928543-87a35efc0606?crop=entropy&cs=srgb&fm=jpg&q=85',
+    body:
+      "Identification rewards patience. Start with size — compare the bird to a familiar one nearby. Note the silhouette, the bill shape, the wing pattern in flight, and any obvious field marks like wing bars or eye rings. Listen as carefully as you watch: a song often clinches the ID when plumage is ambiguous. Build a mental shortlist of the most common species in your habitat, then work outward to rarer guesses. Keep a small field notebook — three lines per sighting is enough — and within a season you'll recognize the regulars on sight.",
   },
   {
     id: 'attract-songbirds',
+    topic: 'attract',
     title: 'The Fascinating World of Songbirds',
     subtitle: 'Why melody matters',
     image: 'https://images.unsplash.com/photo-1612095395498-5e2f3ae4d9a9?crop=entropy&cs=srgb&fm=jpg&q=85',
+    body:
+      "Songbirds — the Passeriformes — are nature's poets. Their songs are simultaneously territorial defense, mate attraction, and identity. Each species has a unique voice; many individuals have personal variations within that voice. To attract songbirds, plant native shrubs that fruit in different seasons, add a moving-water bath, and skip pesticides so caterpillars stay on the menu for hungry chicks. Within a month you'll hear a chorus that wasn't there before.",
   },
   {
     id: 'birding-hours',
+    topic: 'all',
     title: 'The Golden Hours of Birdwatching',
     subtitle: 'When to head out',
     image: 'https://images.unsplash.com/photo-1593192925523-55b6bd063795?crop=entropy&cs=srgb&fm=jpg&q=85',
+    body:
+      "The first 90 minutes after sunrise are the richest hours of the birding day. Males sing to declare territory, both sexes feed urgently, and the soft light makes plumage glow. The late afternoon is the second-best window — the air cools, insects rise, and swallows and swifts come out to hunt. Midday is for shaded woodlands and water edges. Plan your walks around the light, not the clock, and you'll see more in two hours than a casual visitor sees in a week.",
+  },
+  {
+    id: 'hummingbird-feeders',
+    topic: 'hummingbirds',
+    title: 'A Hummingbird Garden in One Weekend',
+    subtitle: 'Feeders, flowers, fast wings',
+    image: 'https://images.unsplash.com/photo-1596386447478-d71f5f8fea87?crop=entropy&cs=srgb&fm=jpg&q=85',
+    body:
+      "Hummingbirds need three things: nectar, perches, and protein. Hang one feeder per balcony filled with 1:4 white sugar to water — no dye, no honey, changed every 3 days in heat. Add a tubular flower like salvia or cuphea nearby. Leave a few small twigs for them to rest on between bouts. A garden spider's web means tiny insects, which the females need to feed their chicks. Sit still; they tolerate stillness, not movement.",
+  },
+  {
+    id: 'spring-migration',
+    topic: 'migration',
+    title: 'Spring Migration in 60 Seconds',
+    subtitle: 'What to look for in April–May',
+    image: 'https://images.unsplash.com/photo-1593192925523-55b6bd063795?crop=entropy&cs=srgb&fm=jpg&q=85',
+    body:
+      "Spring migration peaks in your area around the second week of May. Warblers move at night and drop into woodlots at dawn to refuel — go early, walk slowly, listen up. Check radar maps the evening before; if the skies south of you light up green and yellow, the next morning will be a 'fallout'. Bring a thermos. The window is small, the reward enormous.",
+  },
+  {
+    id: 'backyard-chickens',
+    topic: 'poultry',
+    title: 'Backyard Poultry, Honestly',
+    subtitle: 'What no one tells you',
+    image: 'https://images.unsplash.com/photo-1569402928543-87a35efc0606?crop=entropy&cs=srgb&fm=jpg&q=85',
+    body:
+      "Chickens are easier than dogs, harder than fish. They want a dry coop, a foot of roost per bird, dust to bathe in, and protection from raccoons. Skip the chicks-in-the-bathtub phase if you can — start with point-of-lay pullets from a small farm. Three hens give you enough eggs for breakfast all year. The conversation they hold all day is unexpectedly companionable.",
   },
 ];
 

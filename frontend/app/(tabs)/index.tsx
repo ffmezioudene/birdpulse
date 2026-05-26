@@ -13,7 +13,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
 
 import {
   SEED_BIRDS,
@@ -24,12 +23,15 @@ import {
 } from '@/src/lib/birds';
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import { getFreeUses, isProEffective } from '@/src/lib/state';
+import { PressableScale } from '@/src/components/PressableScale';
+import { BirdCallPlayer } from '@/src/components/BirdCallPlayer';
 
 export default function Home() {
   const router = useRouter();
   const [pro, setProState] = useState(false);
   const [freeUses, setFreeUses] = useState(2);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTopic, setActiveTopic] = useState<string>('all');
 
   const refresh = async () => {
     setProState(await isProEffective());
@@ -46,6 +48,10 @@ export default function Home() {
     setTimeout(() => setRefreshing(false), 600);
   };
 
+  const filteredArticles = EXPLORE_ARTICLES.filter(
+    (a) => activeTopic === 'all' || a.topic === activeTopic
+  );
+
   return (
     <View style={styles.root} testID="home-screen">
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
@@ -58,13 +64,14 @@ export default function Home() {
         >
           {/* Top bar */}
           <View style={styles.topBar}>
-            <TouchableOpacity
+            <PressableScale
               onPress={() => router.push('/settings')}
               style={styles.iconBtn}
               testID="home-settings-button"
+              pressedScale={0.9}
             >
               <Ionicons name="settings-outline" size={20} color={colors.textPrimary} />
-            </TouchableOpacity>
+            </PressableScale>
             <View style={styles.brand}>
               <View style={styles.brandDot} />
               <Text style={styles.brandText}>BirdLens</Text>
@@ -74,14 +81,15 @@ export default function Home() {
                 <Ionicons name="star" size={16} color={colors.secondary} />
               </View>
             ) : (
-              <TouchableOpacity
+              <PressableScale
                 style={styles.proPill}
                 onPress={() => router.push('/paywall')}
                 testID="home-premium-button"
+                pressedScale={0.92}
               >
                 <Ionicons name="star" size={12} color="#0E0F0D" />
                 <Text style={styles.proPillText}>Pro</Text>
-              </TouchableOpacity>
+              </PressableScale>
             )}
           </View>
 
@@ -105,21 +113,14 @@ export default function Home() {
                   <ActionOrb
                     label="Photo ID"
                     icon="camera"
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      router.push('/identify?mode=photo');
-                    }}
+                    onPress={() => router.push('/identify?mode=photo')}
                     testID="home-photo-id-button"
                   />
                   <ActionOrb
                     label="Sound ID"
                     icon="mic"
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      router.push('/identify?mode=sound');
-                    }}
+                    onPress={() => router.push('/identify?mode=sound')}
                     testID="home-sound-id-button"
-                    secondary
                   />
                 </View>
               </View>
@@ -130,16 +131,16 @@ export default function Home() {
           <SectionHeader
             title="Birds Near You"
             actionLabel="All"
-            onAction={() => router.push('/hotspots')}
+            onAction={() => router.push('/birds-near-you')}
             testID="section-birds-near-you"
           />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
             {CATEGORIES.map((c) => (
-              <TouchableOpacity
+              <PressableScale
                 key={c.id}
                 style={styles.categoryCard}
-                onPress={() => router.push('/(tabs)/collection')}
-                testID={`category-${c.id.toLowerCase()}`}
+                onPress={() => router.push(`/category/${encodeURIComponent(c.id)}` as any)}
+                testID={`category-${c.id.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 <ImageBackground
                   source={{ uri: c.image }}
@@ -147,21 +148,30 @@ export default function Home() {
                   imageStyle={{ borderRadius: radii.card }}
                 >
                   <LinearGradient
-                    colors={['transparent', 'rgba(14,15,13,0.85)']}
+                    colors={['transparent', 'rgba(10,11,10,0.92)']}
                     locations={[0.45, 1]}
                     style={[StyleSheet.absoluteFillObject, { borderRadius: radii.card }]}
                   />
                   <Text style={styles.categoryLabel}>{c.title}</Text>
+                  <View style={styles.categoryCta}>
+                    <Text style={styles.categoryCtaText}>Browse</Text>
+                    <Ionicons name="arrow-forward" size={12} color={colors.primary} />
+                  </View>
                 </ImageBackground>
-              </TouchableOpacity>
+              </PressableScale>
             ))}
           </ScrollView>
 
           {/* Popular Birds */}
-          <SectionHeader title="Popular Birds" actionLabel="All" onAction={() => {}} testID="section-popular" />
+          <SectionHeader
+            title="Popular Birds"
+            actionLabel="All"
+            onAction={() => router.push('/popular-birds')}
+            testID="section-popular"
+          />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
             {SEED_BIRDS.map((b) => (
-              <TouchableOpacity
+              <PressableScale
                 key={b.id}
                 style={styles.popCard}
                 onPress={() => router.push(`/bird/${b.id}` as any)}
@@ -171,48 +181,63 @@ export default function Home() {
                 <View style={styles.popBody}>
                   <Text style={styles.popName} numberOfLines={1}>{b.commonName}</Text>
                   <Text style={styles.popLatin} numberOfLines={1}>{b.scientificName}</Text>
-                  <View style={styles.audioRow}>
-                    <View style={styles.playPill}>
-                      <Ionicons name="play" size={11} color="#0E0F0D" />
-                    </View>
-                    <View style={styles.waveform}>
-                      {[8, 14, 10, 18, 12, 20, 14, 9, 16, 11, 7, 14].map((h, i) => (
-                        <View key={i} style={[styles.bar, { height: h }]} />
-                      ))}
-                    </View>
-                    <Text style={styles.audioDur}>0:14</Text>
-                  </View>
+                  <BirdCallPlayer
+                    scientificName={b.scientificName}
+                    testID={`popular-bird-play-${b.id}`}
+                  />
                 </View>
-              </TouchableOpacity>
+              </PressableScale>
             ))}
           </ScrollView>
 
-          {/* Explore chips */}
+          {/* Explore chips with filter state */}
           <SectionHeader title="Explore" actionLabel="" onAction={() => {}} testID="section-explore" />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-            {EXPLORE_TOPICS.map((t) => (
-              <View key={t.id} style={styles.chip}>
-                <Ionicons name={t.icon as any} size={14} color={colors.primary} />
-                <Text style={styles.chipText}>{t.title}</Text>
-              </View>
-            ))}
+            {EXPLORE_TOPICS.map((t) => {
+              const active = activeTopic === t.id;
+              return (
+                <PressableScale
+                  key={t.id}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setActiveTopic(t.id)}
+                  testID={`explore-chip-${t.id}`}
+                  pressedScale={0.94}
+                >
+                  <Ionicons name={t.icon as any} size={14} color={active ? '#0A0B0A' : colors.primary} />
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{t.title}</Text>
+                </PressableScale>
+              );
+            })}
           </ScrollView>
 
           <View style={{ paddingHorizontal: 20, gap: spacing.md, marginTop: spacing.md }}>
-            {EXPLORE_ARTICLES.map((a) => (
-              <TouchableOpacity key={a.id} style={styles.article} activeOpacity={0.85} testID={`article-${a.id}`}>
+            {filteredArticles.length === 0 ? (
+              <View style={styles.emptyArticles}>
+                <Text style={styles.emptyArticlesText}>No articles for this topic yet — pick another.</Text>
+              </View>
+            ) : filteredArticles.map((a) => (
+              <PressableScale
+                key={a.id}
+                style={styles.article}
+                onPress={() => router.push(`/article/${a.id}` as any)}
+                testID={`article-${a.id}`}
+              >
                 <ImageBackground source={{ uri: a.image }} style={styles.articleImg} imageStyle={{ borderRadius: radii.card }}>
                   <LinearGradient
-                    colors={['transparent', 'rgba(14,15,13,0.92)']}
+                    colors={['transparent', 'rgba(10,11,10,0.94)']}
                     locations={[0.35, 1]}
                     style={[StyleSheet.absoluteFillObject, { borderRadius: radii.card }]}
                   />
                   <View style={styles.articleCopy}>
                     <Text style={styles.articleSubtitle}>{a.subtitle}</Text>
                     <Text style={styles.articleTitle}>{a.title}</Text>
+                    <View style={styles.articleCta}>
+                      <Text style={styles.articleCtaText}>Read</Text>
+                      <Ionicons name="arrow-forward" size={13} color={colors.primary} />
+                    </View>
                   </View>
                 </ImageBackground>
-              </TouchableOpacity>
+              </PressableScale>
             ))}
           </View>
         </ScrollView>
@@ -230,7 +255,9 @@ export default function Home() {
       </TouchableOpacity>
     </View>
   );
-}function ActionOrb({
+}
+
+function ActionOrb({
   label,
   icon,
   onPress,
@@ -244,12 +271,12 @@ export default function Home() {
   secondary?: boolean;
 }) {
   return (
-    <TouchableOpacity style={styles.orbCol} activeOpacity={0.85} onPress={onPress} testID={testID}>
+    <PressableScale style={styles.orbCol} onPress={onPress} testID={testID} pressedScale={0.9}>
       <View style={[styles.orb, secondary && styles.orbSecondary]}>
         <Ionicons name={icon} size={26} color={secondary ? colors.secondary : '#0E0F0D'} />
       </View>
       <Text style={styles.orbLabel}>{label}</Text>
-    </TouchableOpacity>
+    </PressableScale>
   );
 }
 
@@ -268,9 +295,12 @@ function SectionHeader({
     <View style={styles.sectionHeader} testID={testID}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {actionLabel ? (
-        <TouchableOpacity onPress={onAction}>
-          <Text style={styles.sectionAction}>{actionLabel} ›</Text>
-        </TouchableOpacity>
+        <PressableScale onPress={onAction} pressedScale={0.92} testID={`${testID}-all`} hitSlop={10}>
+          <View style={styles.sectionActionWrap}>
+            <Text style={styles.sectionAction}>{actionLabel}</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.primary} style={{ marginTop: 1 }} />
+          </View>
+        </PressableScale>
       ) : null}
     </View>
   );
@@ -336,8 +366,9 @@ const styles = StyleSheet.create({
     marginTop: 32,
     marginBottom: spacing.md,
   },
-  sectionTitle: { ...type.h3, color: colors.textPrimary },
-  sectionAction: { ...type.bodySm, color: colors.primary, fontWeight: '600' },
+  sectionTitle: { ...type.title, color: colors.textPrimary },
+  sectionActionWrap: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 4, paddingHorizontal: 4 },
+  sectionAction: { ...type.bodySm, color: colors.primary, fontWeight: '700' },
   hScroll: { paddingHorizontal: 20, gap: 12, paddingRight: 32 },
   categoryCard: { marginRight: 12 },
   categoryImg: {
@@ -349,6 +380,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   categoryLabel: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700' },
+  categoryCta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  categoryCtaText: { ...type.caption, color: colors.primary, fontWeight: '700' },
   popCard: {
     width: 220,
     backgroundColor: colors.card,
@@ -361,19 +394,7 @@ const styles = StyleSheet.create({
   popImage: { width: '100%', height: 120 },
   popBody: { padding: spacing.md, gap: 4 },
   popName: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700' },
-  popLatin: { ...type.bodySm, color: colors.textTertiary, fontStyle: 'italic' },
-  audioRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
-  playPill: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  waveform: { flexDirection: 'row', alignItems: 'center', gap: 2, flex: 1 },
-  bar: { width: 2, backgroundColor: colors.primary, borderRadius: 1, opacity: 0.85 },
-  audioDur: { ...type.bodySm, color: colors.textTertiary },
+  popLatin: { ...type.bodySm, color: colors.textTertiary, fontStyle: 'italic', marginBottom: 6 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -381,17 +402,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
     borderColor: colors.hairline,
     marginRight: 8,
   },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { ...type.bodySm, color: colors.textPrimary, fontWeight: '600' },
+  chipTextActive: { color: '#0A0B0A', fontWeight: '800' },
+  emptyArticles: {
+    padding: spacing.lg, alignItems: 'center',
+    backgroundColor: colors.card, borderRadius: radii.card,
+    borderWidth: 1, borderColor: colors.hairline,
+  },
+  emptyArticlesText: { ...type.body, color: colors.textSecondary, textAlign: 'center' },
   article: { borderRadius: radii.card, overflow: 'hidden' },
   articleImg: { height: 180, justifyContent: 'flex-end' },
   articleCopy: { padding: spacing.lg },
   articleSubtitle: { ...type.caption, color: colors.primary, marginBottom: 4 },
   articleTitle: { ...type.h3, color: colors.textPrimary },
+  articleCta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  articleCtaText: { ...type.bodySm, color: colors.primary, fontWeight: '700' },
   owl: {
     position: 'absolute',
     bottom: 108,
