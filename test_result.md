@@ -156,6 +156,9 @@ agent_communication:
     -message: "Home navigation rewire complete and verified (iteration_3). Spring press feedback live across Home + Popular Birds + Birds Near You + Category + Article reader. BirdCallPlayer ready — currently shows 'Unavailable' label because no XENO_CANTO_KEY is set; user can add a free key from xeno-canto.org to unlock playback."
 
     -agent: "main"
+    -agent: "main"
+    -message: "Iteration 6 — Home Perfection Pass (8/8 + 5/5 regressions PASS). Fixes: (1) owl FAB now pinned bottom:100 right:16, never overlaps cards; (2) 3-stop scrim ['transparent','rgba(10,11,10,0.55)','rgba(10,11,10,0.96)'] @ [0,0.45,1] on every image card; (3) one consistent card language — 20px radius/padding everywhere; (4) reorder = Header → Search → Identify → Bird of the Day → Birds Near You → Popular → Explore; (5) Bird of the Day card (deterministic by day-of-year); (6) Birds Near You shows 'Active in {month}' subtitle; (7) staggered FadeInDown 50/100/150/200/250/300ms entrance; (8) '216 instant' badge REMOVED from search bar."
+
     -message: "Iteration 5 — Real Wikipedia thumbnails everywhere (12/12 + 8/8 PASS). New: src/components/SpeciesThumb.tsx (shimmer → expo-image → leaf-only-on-genuine-miss), src/lib/thumb-cache.ts (in-memory + AsyncStorage batch queue), POST /api/birds/thumbs (MediaWiki pageimages 50/req batch). Leaf placeholder has effectively vanished from normal use. 9 batch calls per session, all <2s. Precached birds still INSTANT."
 
     -agent: "main"
