@@ -1,0 +1,45 @@
+{
+  "summary": "Frontend re-verification of the BirdLens BirdCallPlayer nested-Pressable fix on web preview @ 412x915. ALL 12 critical checks PASS. The fix (extracting BirdCallPlayer to a sibling <View> outside the parent PressableScale) is now structurally correct in (tabs)/index.tsx, popular-birds.tsx, birds-near-you.tsx, and category/[id].tsx. After restarting expo to clear Metro's stale bundle cache, the DOM confirms ZERO nested <button> elements on Home, /popular-birds, /birds-near-you, and /category/Songbirds, ZERO React hydration errors at runtime, and tapping the play button on any of the four screens no longer triggers parent navigation to /bird/{id}. The image/text region of each card still navigates correctly to /bird/northern-cardinal. The 9 regression flows from iteration_2 (popular-birds-all, birds-near-you-all, category drill-in, popular card → bird detail, back navigation, etc.) continue to work. Note: initial test run before expo restart showed the OLD nested-button DOM was still being served because Metro had cached the pre-fix bundle. After `supervisorctl restart expo`, the fresh bundle eliminated the nested structure entirely. NO new bugs introduced. The fix is VERIFIED.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "BirdCallPlayer → XenoCanto",
+        "issue": "Still returns 'Unavailable' label because XENO_CANTO_KEY is intentionally unset in backend/.env (documented in iteration_1/2). NOT a regression — when key is set, the now-working play onPress will fetch and play audio. The defensive e.stopPropagation()/e.preventDefault() inside BirdCallPlayer.onPress is good belt-and-braces protection on top of the structural fix.",
+        "affected_testIDs": ["popular-bird-play-northern-cardinal", "popular-northern-cardinal-play", "near-bird-northern-cardinal-play", "category-bird-northern-cardinal-play"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "RN-Web style deprecations (LOW — unchanged from iteration_2)",
+        "issue": "Console still warns: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' (from src/theme shadows.glowPrimary used in (tabs)/index.tsx orb style and elsewhere) and 'props.pointerEvents is deprecated. Use style.pointerEvents'. Cosmetic. Reference: /app/frontend/src/theme/* and /app/frontend/app/onboarding.tsx:97."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_3.json",
+    "/app/test_reports/iteration_2.json"
+  ],
+  "action_items": [
+    "OPTIONAL (LOW): Migrate `shadow*` style props to `boxShadow` and `props.pointerEvents` to `style.pointerEvents` to eliminate RN-Web deprecation warnings (cosmetic, no functional impact).",
+    "OPTIONAL: Add XENO_CANTO_KEY to backend/.env to enable real audio playback (frontend audio plumbing is fully ready and the play button is now reachable without side effects).",
+    "INFO for main agent: when iterating on Pressable nesting changes in dev, always run `sudo supervisorctl restart expo` (or hot-reload won't pick it up because Metro is in CI mode here) — a stale bundle masked the fix during the first test pass of this iteration."
+  ],
+  "critical_code_review_comments": [
+    "Structurally correct fix verified: BirdCallPlayer now lives in a sibling <View> (e.g. styles.popFooter / styles.footer / styles.birdFooter / styles.rowFooter) at the same level as the parent PressableScale card, so the DOM tree no longer has <button data-testid='popular-bird-X'><button data-testid='popular-bird-play-X'></button></button>. Verified via document.querySelectorAll('button') walking up parentElement chain — zero hits across all four screens.",
+    "Belt-and-braces: BirdCallPlayer.onPress (src/components/BirdCallPlayer.tsx:101) now calls e.stopPropagation() + e.preventDefault() + e.nativeEvent.stopImmediatePropagation(). This is correct and harmless given the new structure; keeps the implementation defensive if a future caller ever re-nests the player.",
+    "The setTimeout(150) heuristic for player.play() after setAudioUrl (src/components/BirdCallPlayer.tsx:88) is still fragile and the same comment from iteration_2 applies — consider switching to a status.isLoaded effect-driven play() call. Not blocking."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "not tested this iteration (frontend-only scope)",
+    "frontend": "100% — 12/12 verification checks pass (no nested buttons on 4 screens × no-nav + nav assertions, 0 hydration errors)"
+  },
+  "seed_data_creation": "None. localStorage['birdlens.onboarding.done']='true' via add_init_script to skip onboarding.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "BirdCallPlayer nested-button fix is fully verified. If you're testing changes to PressableScale, BirdCallPlayer, or any of the four affected list/grid screens, ALWAYS run `sudo supervisorctl restart expo` before testing because Metro runs in CI mode (no hot reload). Test pattern that confirmed the fix: page.evaluate(() => document.querySelectorAll('button')).forEach walk parentElement for any BUTTON ancestor → expect empty result. Combine with: click play → expect URL unchanged + parent screen still visible. The expected testID schema is unchanged from iteration_2: popular-bird-{id} / popular-bird-play-{id} on Home, popular-{id} / popular-{id}-play on /popular-birds, near-bird-{id} / near-bird-{id}-play on /birds-near-you, category-bird-{id} / category-bird-{id}-play on /category/{id}.",
+  "rca_of_issue": "RCA confirmed and resolved. Root cause: PressableScale renders react-native's <Pressable> which becomes a native <button> on react-native-web. Putting one PressableScale (BirdCallPlayer) inside another PressableScale's children produced a <button><button> tree, which (a) triggered React 19 hydration validation errors and (b) caused click events on the inner play button to bubble to the outer card button on web, navigating away instead of starting playback. Mitigation applied: each affected screen now wraps the card in a plain <View> parent and renders the PressableScale card and the BirdCallPlayer as TWO sibling children — one PressableScale renders to <button>, the BirdCallPlayer renders to a separate, sibling <button>. The DOM tree is now flat with no button-in-button. As an additional safety net, BirdCallPlayer.onPress also calls e.stopPropagation() + e.preventDefault(). Verification: nested-button DOM check returns [] on all four affected screens; play click does not change the URL and the parent screen remains visible; card/image click still navigates to /bird/{id}."
+}

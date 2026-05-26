@@ -64,22 +64,25 @@ export default function BirdsNearYou() {
           </View>
         }
         renderItem={({ item }) => (
-          <PressableScale
-            style={styles.birdCard}
-            onPress={() => router.push(`/bird/${item.id}` as any)}
-            testID={`near-bird-${item.id}`}
-          >
-            <Image source={{ uri: item.image }} style={styles.birdImg} />
-            <View style={styles.birdBody}>
-              <Text style={styles.birdName} numberOfLines={1}>{item.commonName}</Text>
-              <Text style={styles.birdMeta} numberOfLines={1}>{item.category}</Text>
+          <View style={styles.birdCard}>
+            <PressableScale
+              onPress={() => router.push(`/bird/${item.id}` as any)}
+              testID={`near-bird-${item.id}`}
+            >
+              <Image source={{ uri: item.image }} style={styles.birdImg} />
+              <View style={styles.birdBody}>
+                <Text style={styles.birdName} numberOfLines={1}>{item.commonName}</Text>
+                <Text style={styles.birdMeta} numberOfLines={1}>{item.category}</Text>
+              </View>
+            </PressableScale>
+            <View style={styles.birdFooter}>
               <BirdCallPlayer
                 scientificName={item.scientificName}
                 label="Call"
                 testID={`near-bird-${item.id}-play`}
               />
             </View>
-          </PressableScale>
+          </View>
         )}
       />
     </View>
@@ -99,9 +102,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.hairline, overflow: 'hidden',
   },
   birdImg: { width: '100%', height: 130 },
-  birdBody: { padding: spacing.s12, gap: 4 },
+  birdBody: { paddingHorizontal: spacing.s12, paddingTop: spacing.s12, paddingBottom: spacing.sm, gap: 4 },
+  birdFooter: { paddingHorizontal: spacing.s12, paddingBottom: spacing.s12 },
   birdName: { ...type.bodyL, color: colors.textPrimary, fontWeight: '700' },
-  birdMeta: { ...type.caption, color: colors.textTertiary, marginBottom: 4 },
+  birdMeta: { ...type.caption, color: colors.textTertiary },
   empty: { alignItems: 'center', gap: 10, padding: spacing.xl },
   emptyTitle: { ...type.bodyL, color: colors.textPrimary, fontWeight: '700' },
   emptySub: { ...type.body, color: colors.textTertiary, textAlign: 'center' },

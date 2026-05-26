@@ -89,21 +89,24 @@ export default function PopularBirds() {
           </View>
         }
         renderItem={({ item }) => (
-          <PressableScale
-            style={styles.card}
-            onPress={() => router.push(`/bird/${item.id}` as any)}
-            testID={`popular-${item.id}`}
-          >
-            <Image source={{ uri: item.image }} style={styles.img} />
-            <View style={styles.body}>
-              <Text style={styles.name} numberOfLines={1}>{item.commonName}</Text>
-              <Text style={styles.latin} numberOfLines={1}>{item.scientificName}</Text>
+          <View style={styles.card}>
+            <PressableScale
+              onPress={() => router.push(`/bird/${item.id}` as any)}
+              testID={`popular-${item.id}`}
+            >
+              <Image source={{ uri: item.image }} style={styles.img} />
+              <View style={styles.body}>
+                <Text style={styles.name} numberOfLines={1}>{item.commonName}</Text>
+                <Text style={styles.latin} numberOfLines={1}>{item.scientificName}</Text>
+              </View>
+            </PressableScale>
+            <View style={styles.footer}>
               <BirdCallPlayer
                 scientificName={item.scientificName}
                 testID={`popular-${item.id}-play`}
               />
             </View>
-          </PressableScale>
+          </View>
         )}
       />
     </View>
@@ -135,9 +138,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.hairline, overflow: 'hidden',
   },
   img: { width: '100%', height: 130 },
-  body: { padding: spacing.s12, gap: 4 },
+  body: { paddingHorizontal: spacing.s12, paddingTop: spacing.s12, paddingBottom: spacing.sm, gap: 4 },
+  footer: { paddingHorizontal: spacing.s12, paddingBottom: spacing.s12 },
   name: { ...type.bodyL, color: colors.textPrimary, fontWeight: '700' },
-  latin: { ...type.caption, color: colors.textTertiary, fontStyle: 'italic', marginBottom: 4 },
+  latin: { ...type.caption, color: colors.textTertiary, fontStyle: 'italic' },
   empty: { alignItems: 'center', gap: 10, padding: spacing.xl, marginTop: spacing.lg },
   emptyTitle: { ...type.bodyL, color: colors.textPrimary, fontWeight: '700' },
   emptySub: { ...type.body, color: colors.textTertiary, textAlign: 'center' },

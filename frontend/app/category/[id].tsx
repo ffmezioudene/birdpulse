@@ -42,26 +42,28 @@ export default function CategoryScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <PressableScale
-            style={styles.row}
-            onPress={() => router.push(`/bird/${item.id}` as any)}
-            testID={`category-bird-${item.id}`}
-            pressedScale={0.98}
-          >
-            <Image source={{ uri: item.image }} style={styles.img} />
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={styles.name} numberOfLines={1}>{item.commonName}</Text>
-              <Text style={styles.latin} numberOfLines={1}>{item.scientificName}</Text>
-              <View style={{ marginTop: 2 }}>
-                <BirdCallPlayer
-                  scientificName={item.scientificName}
-                  label="Call"
-                  testID={`category-bird-${item.id}-play`}
-                />
+          <View style={styles.row}>
+            <PressableScale
+              onPress={() => router.push(`/bird/${item.id}` as any)}
+              testID={`category-bird-${item.id}`}
+              pressedScale={0.98}
+              style={styles.rowMain}
+            >
+              <Image source={{ uri: item.image }} style={styles.img} />
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={styles.name} numberOfLines={1}>{item.commonName}</Text>
+                <Text style={styles.latin} numberOfLines={1}>{item.scientificName}</Text>
               </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+            </PressableScale>
+            <View style={styles.rowFooter}>
+              <BirdCallPlayer
+                scientificName={item.scientificName}
+                label="Call"
+                testID={`category-bird-${item.id}-play`}
+              />
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-          </PressableScale>
+          </View>
         )}
       />
     </View>
@@ -72,10 +74,15 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   summary: { ...type.caption, color: colors.textTertiary, marginBottom: spacing.sm },
   row: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 12, backgroundColor: colors.card, borderRadius: radii.card,
+    backgroundColor: colors.card, borderRadius: radii.card,
     borderWidth: 1, borderColor: colors.hairline,
+    overflow: 'hidden',
   },
+  rowMain: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: 12,
+  },
+  rowFooter: { paddingHorizontal: 12, paddingBottom: 12 },
   img: { width: 78, height: 78, borderRadius: 14 },
   name: { ...type.bodyL, color: colors.textPrimary, fontWeight: '700' },
   latin: { ...type.caption, color: colors.textTertiary, fontStyle: 'italic' },

@@ -57,7 +57,7 @@ export function BirdCallPlayer({ scientificName, size = 'sm', label, testID }: P
     return () => clearInterval(t);
   }, [isPlaying]);
 
-  const onPress = useCallback(async () => {
+  const doPlay = useCallback(async () => {
     if (loading) return;
     if (isPlaying) {
       try { player.pause(); } catch {}
@@ -95,6 +95,15 @@ export function BirdCallPlayer({ scientificName, size = 'sm', label, testID }: P
       if (mounted.current) setLoading(false);
     }
   }, [audioUrl, isPlaying, loading, player, scientificName]);
+
+  // Web: nested <button> within Pressable cards causes click bubbling
+  // → ensure we stop propagation so the parent card press does not fire.
+  const onPress = useCallback((e: any) => {
+    if (e?.stopPropagation) e.stopPropagation();
+    if (e?.preventDefault) e.preventDefault();
+    if (e?.nativeEvent?.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
+    void doPlay();
+  }, [doPlay]);
 
   const dim = size === 'md' ? 32 : 26;
   const radius = dim / 2;

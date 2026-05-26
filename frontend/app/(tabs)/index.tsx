@@ -171,22 +171,24 @@ export default function Home() {
           />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
             {SEED_BIRDS.map((b) => (
-              <PressableScale
-                key={b.id}
-                style={styles.popCard}
-                onPress={() => router.push(`/bird/${b.id}` as any)}
-                testID={`popular-bird-${b.id}`}
-              >
-                <Image source={{ uri: b.image }} style={styles.popImage} />
-                <View style={styles.popBody}>
-                  <Text style={styles.popName} numberOfLines={1}>{b.commonName}</Text>
-                  <Text style={styles.popLatin} numberOfLines={1}>{b.scientificName}</Text>
+              <View key={b.id} style={styles.popCard}>
+                <PressableScale
+                  onPress={() => router.push(`/bird/${b.id}` as any)}
+                  testID={`popular-bird-${b.id}`}
+                >
+                  <Image source={{ uri: b.image }} style={styles.popImage} />
+                  <View style={styles.popBody}>
+                    <Text style={styles.popName} numberOfLines={1}>{b.commonName}</Text>
+                    <Text style={styles.popLatin} numberOfLines={1}>{b.scientificName}</Text>
+                  </View>
+                </PressableScale>
+                <View style={styles.popFooter}>
                   <BirdCallPlayer
                     scientificName={b.scientificName}
                     testID={`popular-bird-play-${b.id}`}
                   />
                 </View>
-              </PressableScale>
+              </View>
             ))}
           </ScrollView>
 
@@ -392,9 +394,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   popImage: { width: '100%', height: 120 },
-  popBody: { padding: spacing.md, gap: 4 },
+  popBody: { padding: spacing.md, paddingBottom: spacing.sm, gap: 4 },
   popName: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700' },
-  popLatin: { ...type.bodySm, color: colors.textTertiary, fontStyle: 'italic', marginBottom: 6 },
+  popLatin: { ...type.bodySm, color: colors.textTertiary, fontStyle: 'italic' },
+  popFooter: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
