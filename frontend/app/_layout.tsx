@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { setAudioModeAsync } from 'expo-audio';
 import {
   useFonts,
   PlusJakartaSans_400Regular,
@@ -34,6 +35,20 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [ready]);
+
+  // Configure audio session ONCE — without this, iOS phones on silent mode
+  // play silently even when expo-audio reports `playing: true`.
+  useEffect(() => {
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      allowsRecording: false,
+      shouldPlayInBackground: false,
+      interruptionMode: 'mixWithOthers',
+    }).catch((e) => {
+      // Web has no native audio mode — safely ignore.
+      if (__DEV__) console.log('[audio-mode] not applied:', e?.message ?? e);
+    });
+  }, []);
 
   if (!ready) return null;
 

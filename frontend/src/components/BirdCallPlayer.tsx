@@ -1,5 +1,13 @@
-// Tap-to-play bird call. Fetches a Xeno-Canto recording via our backend
-// and streams it through expo-audio. Animated waveform while playing.
+// Tap-to-play bird call.
+//
+// Fetches a Xeno-canto recording via our backend (/api/xenocanto, v3)
+// and streams it through expo-audio with `player.replace({ uri })`. The
+// audio session is configured app-wide in `_layout.tsx` with
+// `playsInSilentMode: true`, which is REQUIRED for iOS to actually emit
+// sound when the device's hardware silent switch is on.
+//
+// Only one BirdCallPlayer in the app plays at a time — when one starts,
+// all other instances pause via the simple subscriber bus below.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,10 +27,8 @@ type Props = {
   testID?: string;
 };
 
-let currentlyPlayingId: string | null = null;
 const subscribers = new Set<(id: string | null) => void>();
 function setActiveSpecies(id: string | null) {
-  currentlyPlayingId = id;
   subscribers.forEach((fn) => fn(id));
 }
 
@@ -32,14 +38,16 @@ export function BirdCallPlayer({ scientificName, size = 'sm', label, testID }: P
   const [error, setError] = useState(false);
   const [tick, setTick] = useState(0);
 
-  const player = useAudioPlayer(audioUrl);
+  // Player created with no initial source; we feed it via player.replace() —
+  // this is the same pattern result.tsx uses successfully.
+  const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
-  const isPlaying = status?.playing ?? false;
+  const isPlaying = !!status?.playing;
   const mounted = useRef(true);
 
   useEffect(() => () => { mounted.current = false; }, []);
 
-  // Auto-stop this instance if another player starts.
+  // Pause this instance if another player takes over.
   useEffect(() => {
     const fn = (id: string | null) => {
       if (id !== scientificName && isPlaying) {
@@ -50,7 +58,7 @@ export function BirdCallPlayer({ scientificName, size = 'sm', label, testID }: P
     return () => { subscribers.delete(fn); };
   }, [isPlaying, player, scientificName]);
 
-  // Animate waveform tick while playing.
+  // Waveform tick.
   useEffect(() => {
     if (!isPlaying) return;
     const t = setInterval(() => setTick((x) => x + 1), 140);
@@ -59,45 +67,58 @@ export function BirdCallPlayer({ scientificName, size = 'sm', label, testID }: P
 
   const doPlay = useCallback(async () => {
     if (loading) return;
-    if (isPlaying) {
-      try { player.pause(); } catch {}
-      setActiveSpecies(null);
-      return;
-    }
+
+    // Already have a loaded source — toggle.
     if (audioUrl) {
       try {
-        player.seekTo(0);
-        player.play();
-        setActiveSpecies(scientificName);
-      } catch {
+        if (isPlaying) {
+          player.pause();
+          setActiveSpecies(null);
+        } else {
+          player.seekTo(0);
+          player.play();
+          setActiveSpecies(scientificName);
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[BirdCallPlayer] toggle failed', e);
         setError(true);
       }
       return;
     }
+
+    // First tap — fetch URL, load it into the player, play.
     setLoading(true);
     setError(false);
     try {
       const r = await fetchXenoCanto(scientificName, 1);
       const url = r.recordings?.[0]?.audio_url;
+      if (__DEV__) console.log(`[BirdCallPlayer] ${scientificName} → ${url ?? '(no audio)'}`);
       if (!url) {
         setError(true);
-      } else if (mounted.current) {
-        setAudioUrl(url);
-        setActiveSpecies(scientificName);
-        // expo-audio auto-loads new sources — but we need to wait a moment.
-        setTimeout(() => {
-          try { player.play(); } catch {}
-        }, 150);
+        return;
       }
-    } catch {
+      if (!mounted.current) return;
+      setAudioUrl(url);
+      // Hand the URL to the player. expo-audio expects an object source.
+      try {
+        player.replace({ uri: url });
+        player.volume = 1.0;
+        player.play();
+        setActiveSpecies(scientificName);
+      } catch (e) {
+        if (__DEV__) console.warn('[BirdCallPlayer] play failed', e);
+        setError(true);
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[BirdCallPlayer] fetch failed', e);
       if (mounted.current) setError(true);
     } finally {
       if (mounted.current) setLoading(false);
     }
   }, [audioUrl, isPlaying, loading, player, scientificName]);
 
-  // Web: nested <button> within Pressable cards causes click bubbling
-  // → ensure we stop propagation so the parent card press does not fire.
+  // Stop propagation so tapping the player inside a card doesn't trigger
+  // the card's onPress on web.
   const onPress = useCallback((e: any) => {
     if (e?.stopPropagation) e.stopPropagation();
     if (e?.preventDefault) e.preventDefault();
@@ -109,9 +130,17 @@ export function BirdCallPlayer({ scientificName, size = 'sm', label, testID }: P
   const radius = dim / 2;
   const iconSize = size === 'md' ? 14 : 11;
   const bars = isPlaying
-    ? BAR_HEIGHTS_PLAY.map((h, i) => (h + ((tick + i) % 3) * 2))
+    ? BAR_HEIGHTS_PLAY.map((h, i) => h + ((tick + i) % 3) * 2)
     : BAR_HEIGHTS_IDLE;
-  const text = error ? 'Unavailable' : loading ? 'Loading…' : isPlaying ? 'Playing' : (label ?? 'Play call');
+  const text = error
+    ? 'Unavailable'
+    : loading
+      ? 'Loading…'
+      : isPlaying
+        ? 'Playing'
+        : audioUrl
+          ? 'Play call'
+          : (label ?? 'Play call');
 
   return (
     <PressableScale
