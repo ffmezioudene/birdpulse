@@ -19,7 +19,6 @@ import { getFavorites, toggleFavorite } from '@/src/lib/state';
 import { getInstantDetail, loadFullDetail, RichBirdDetail, ConfusedWith } from '@/src/lib/bird-detail';
 import { lookupByScientific, lookupByCommon, hasPrecachedDetail, type Species } from '@/src/lib/catalog';
 import { PressableScale } from '@/src/components/PressableScale';
-import { FeatherWave } from '@/src/components/FeatherWave';
 import { SpeciesThumb } from '@/src/components/SpeciesThumb';
 import {
   SkeletonBlock,
@@ -111,7 +110,7 @@ export default function BirdDetail() {
             <Image source={{ uri: heroImage }} style={styles.heroImg} />
           ) : (
             <View style={[styles.heroImg, styles.heroPlaceholder]}>
-              <FeatherWave size={64} mode="static" glow />
+              <SkeletonBlock width="80%" height={140} radius={20} />
             </View>
           )}
           <LinearGradient
