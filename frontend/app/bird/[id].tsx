@@ -16,7 +16,7 @@ import { colors, type, spacing, radii } from '@/src/theme';
 import { fetchXenoCanto, XenoRecording } from '@/src/lib/api';
 import { getFavorites, toggleFavorite } from '@/src/lib/state';
 import { getInstantDetail, loadFullDetail, RichBirdDetail, ConfusedWith } from '@/src/lib/bird-detail';
-import { lookupByScientific, lookupByCommon, type Species } from '@/src/lib/catalog';
+import { lookupByScientific, lookupByCommon, hasPrecachedDetail, type Species } from '@/src/lib/catalog';
 import { PressableScale } from '@/src/components/PressableScale';
 import { FeatherWave } from '@/src/components/FeatherWave';
 import { SpeciesThumb } from '@/src/components/SpeciesThumb';
@@ -126,7 +126,7 @@ export default function BirdDetail() {
           </SafeAreaView>
 
           <View style={styles.heroTitleWrap}>
-            {detail.source === 'precached' && (
+            {hasPrecachedDetail(detail.id) && (
               <View style={styles.instantBadge}>
                 <Ionicons name="flash" size={10} color="#0A0B0A" />
                 <Text style={styles.instantBadgeText}>Offline ready</Text>
