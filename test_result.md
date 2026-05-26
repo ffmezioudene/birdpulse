@@ -101,3 +101,56 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Wire up dead Home screen elements — All › buttons, category cards, explore chips, article cards — to functional destinations with spring press feedback and FeatherWave loading/empty states."
+
+frontend:
+  - task: "Home → destinations navigation + press feedback + audio playback"
+    implemented: true
+    working: true
+    file: "app/(tabs)/index.tsx, app/popular-birds.tsx, app/birds-near-you.tsx, app/category/[id].tsx, app/article/[id].tsx, src/components/PressableScale.tsx, src/components/BirdCallPlayer.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "Added PressableScale (Reanimated spring + haptic) and BirdCallPlayer (live Xeno-canto playback via expo-audio). Wired Home All-buttons, category cards, popular cards, article cards, explore chips. Polished destinations with search/filter/related sections."
+        -working: true
+        -agent: "testing"
+        -comment: "iteration_2: 10/10 nav flows pass. Flagged HIGH: nested <button> on web — play press bubbled to parent card."
+        -working: true
+        -agent: "main"
+        -comment: "Restructured all 4 affected screens to hoist BirdCallPlayer into a sibling View outside the parent PressableScale."
+        -working: true
+        -agent: "testing"
+        -comment: "iteration_3: 12/12 checks PASS, zero nested buttons, zero hydration warnings, play no longer navigates. Fix verified."
+
+backend:
+  - task: "Xeno-canto v3 proxy w/ scientific name support"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "Endpoint already existed. Improved query: accepts scientific Latin (Genus species) as raw token or common name as en:'...'. Returns clear note when XENO_CANTO_KEY is unset (v2 is deprecated, v3 requires free key from xeno-canto.org)."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.1"
+  test_sequence: 3
+  run_ui: true
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "Home navigation rewire complete and verified (iteration_3). Spring press feedback live across Home + Popular Birds + Birds Near You + Category + Article reader. BirdCallPlayer ready — currently shows 'Unavailable' label because no XENO_CANTO_KEY is set; user can add a free key from xeno-canto.org to unlock playback."

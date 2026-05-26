@@ -359,9 +359,10 @@ async def chat_endpoint(req: ChatRequest):
 
 @api_router.get("/xenocanto")
 async def xenocanto(species: str, limit: int = 3):
-    """Proxy xeno-canto API for bird call recordings.
+    """Proxy Xeno-canto API for bird call recordings.
 
-    v3 requires an API key. If XENO_CANTO_KEY is set in env we use v3; otherwise
+    Xeno-canto v3 requires an API key (free, from xeno-canto.org/explore/api).
+    Set XENO_CANTO_KEY in backend/.env to enable audio playback. Without it
     we return an empty list so the UI degrades gracefully.
     """
     if not species:
@@ -369,36 +370,41 @@ async def xenocanto(species: str, limit: int = 3):
 
     key = os.environ.get("XENO_CANTO_KEY", "")
     if not key:
-        return {"recordings": [], "note": "Set XENO_CANTO_KEY in backend/.env to enable bird call recordings."}
+        return {
+            "recordings": [],
+            "note": "Add a free XENO_CANTO_KEY to backend/.env to enable bird call playback.",
+        }
 
     url = "https://xeno-canto.org/api/3/recordings"
-    # v3 requires a tag; treat the input as English common name
-    params = {"query": f'en:"{species}"', "key": key, "per_page": limit}
+    # Accept either common name (en:"...") or scientific name (raw token).
+    is_latin = bool(re.match(r"^[A-Z][a-z]+ [a-z]+$", species.strip()))
+    query = species.strip() if is_latin else f'en:"{species}"'
+    params = {"query": query, "key": key, "per_page": limit}
     try:
         async with httpx.AsyncClient(timeout=15) as http:
             r = await http.get(url, params=params)
             r.raise_for_status()
             data = r.json()
     except Exception as e:
-        logger.warning("xeno-canto failed: %s", e)
+        logger.warning("xeno-canto v3 failed: %s", e)
         return {"recordings": []}
 
     recs = data.get("recordings", [])[:limit]
     out = []
     for rec in recs:
-        audio = rec.get("file")
+        audio = rec.get("file") or ""
         if audio and not audio.startswith("http"):
             audio = "https:" + audio
         out.append(
             {
-                "id": rec.get("id", ""),
+                "id": str(rec.get("id", "")),
                 "species": f"{rec.get('gen','')} {rec.get('sp','')}".strip(),
                 "common_name": rec.get("en", ""),
                 "location": rec.get("loc", ""),
                 "country": rec.get("cnt", ""),
                 "quality": rec.get("q", ""),
                 "length": rec.get("length", ""),
-                "audio_url": audio or "",
+                "audio_url": audio,
             }
         )
     return {"recordings": out}
