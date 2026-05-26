@@ -8,10 +8,17 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAudioPlayer } from 'expo-audio';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  useSharedValue,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated';
 
 import { colors, type, spacing, radii } from '@/src/theme';
 import { fetchXenoCanto, XenoRecording } from '@/src/lib/api';
@@ -34,12 +41,32 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 export default function BirdDetail() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const birdId = String(id ?? '');
 
   // Hybrid load: synchronous instant snapshot from precache + index.
   const [detail, setDetail] = useState<RichBirdDetail | null>(() => getInstantDetail(birdId));
   const [enriching, setEnriching] = useState(false);
+
+  // Scroll-driven status-bar backdrop opacity. Hero is 360 high; we start
+  // fading in the solid bg-color top bar 100 px before the hero leaves the
+  // viewport so content never visibly slides under the status bar / notch.
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollY.value = e.contentOffset.y;
+    },
+  });
+  const HERO_HEIGHT = 360;
+  const topBarStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      scrollY.value,
+      [HERO_HEIGHT - insets.top - 120, HERO_HEIGHT - insets.top - 20],
+      [0, 1],
+      Extrapolation.CLAMP,
+    ),
+  }));
 
   const [tab, setTab] = useState<TabKey>('description');
   const [favs, setFavs] = useState<string[]>([]);
@@ -103,7 +130,12 @@ export default function BirdDetail() {
 
   return (
     <View style={styles.root} testID="bird-detail-screen">
-      <ScrollView contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView
+        contentContainerStyle={{ paddingBottom: 80 }}
+        showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+      >
         {/* Hero */}
         <View style={styles.heroWrap}>
           {heroImage ? (
@@ -296,7 +328,18 @@ export default function BirdDetail() {
             </View>
           )}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
+
+      {/* Top safe-area backdrop — fades in as the hero scrolls off so no
+          content ever visibly slides under the status bar / notch. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.topBackdrop,
+          { height: insets.top, paddingTop: 0 },
+          topBarStyle,
+        ]}
+      />
     </View>
   );
 }
@@ -540,6 +583,16 @@ function AskOwlCard({ birdName, onPress }: { birdName: string; onPress: () => vo
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  topBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.bg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+    zIndex: 10,
+  },
   notFoundRoot: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 20 },
   notFoundText: { ...type.heading, color: colors.textPrimary },
   notFoundBtn: { paddingHorizontal: 20, height: 44, justifyContent: 'center', backgroundColor: colors.primary, borderRadius: radii.pill },
