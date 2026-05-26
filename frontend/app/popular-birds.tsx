@@ -1,42 +1,55 @@
-// Popular Birds — full grid with search, sort, real audio playback.
+// Popular Birds — virtualized grid from the catalog. Pre-cached birds shown first.
 import { useMemo, useState } from 'react';
-import {
-  View, Text, StyleSheet, FlatList, Image, TextInput, ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, TextInput, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, type, radii } from '@/src/theme';
-import { SEED_BIRDS, CATEGORIES } from '@/src/lib/birds';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { PressableScale } from '@/src/components/PressableScale';
 import { BirdCallPlayer } from '@/src/components/BirdCallPlayer';
 import { FeatherWave } from '@/src/components/FeatherWave';
+import {
+  CATEGORIES as CATALOG_CATEGORIES,
+  allSpecies,
+  getPrecachedDetail,
+  precacheSize,
+} from '@/src/lib/catalog';
 
-const FILTERS = ['All', ...Array.from(new Set(CATEGORIES.map((c) => c.id)))];
+const FILTERS = [{ id: 'all', title: 'All' }, ...CATALOG_CATEGORIES.map((c) => ({ id: c.id, title: c.title }))];
 
 export default function PopularBirds() {
   const router = useRouter();
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<string>('All');
+  const [filter, setFilter] = useState<string>('all');
+
+  const popular = useMemo(() => {
+    // Surface every precached species (the "popular" set), sorted alphabetically.
+    return allSpecies()
+      .filter((s) => !!getPrecachedDetail(s.id))
+      .sort((a, b) => a.c.localeCompare(b.c));
+  }, []);
 
   const data = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return SEED_BIRDS.filter((b) => {
-      const passCat = filter === 'All' || b.category === filter;
-      if (!passCat) return false;
+    const cat = CATALOG_CATEGORIES.find((c) => c.id === filter);
+    return popular.filter((b) => {
+      if (cat && !cat.match(b)) return false;
       if (!term) return true;
       return (
-        b.commonName.toLowerCase().includes(term) ||
-        b.scientificName.toLowerCase().includes(term) ||
-        b.category.toLowerCase().includes(term)
+        b.c.toLowerCase().includes(term) ||
+        b.s.toLowerCase().includes(term) ||
+        (b.fe || '').toLowerCase().includes(term)
       );
     });
-  }, [q, filter]);
+  }, [q, filter, popular]);
 
   return (
     <View style={styles.root} testID="popular-birds-screen">
-      <ScreenHeader title="Popular Birds" eyebrow="MOST LOVED" />
+      <ScreenHeader
+        title="Popular Birds"
+        eyebrow={`${precacheSize()} INSTANT • OFFLINE READY`}
+      />
 
       <View style={styles.searchWrap}>
         <View style={styles.searchBox}>
@@ -44,7 +57,7 @@ export default function PopularBirds() {
           <TextInput
             value={q}
             onChangeText={setQ}
-            placeholder="Search birds…"
+            placeholder="Search popular birds…"
             placeholderTextColor={colors.textTertiary}
             style={styles.searchInput}
             returnKeyType="search"
@@ -59,16 +72,16 @@ export default function PopularBirds() {
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
           {FILTERS.map((f) => {
-            const active = f === filter;
+            const active = f.id === filter;
             return (
               <PressableScale
-                key={f}
+                key={f.id}
                 style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setFilter(f)}
+                onPress={() => setFilter(f.id)}
                 pressedScale={0.94}
-                testID={`popular-filter-${f}`}
+                testID={`popular-filter-${f.id}`}
               >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{f}</Text>
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{f.title}</Text>
               </PressableScale>
             );
           })}
@@ -81,33 +94,46 @@ export default function PopularBirds() {
         numColumns={2}
         columnWrapperStyle={{ gap: 12 }}
         contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: 80 }}
+        initialNumToRender={6}
+        maxToRenderPerBatch={8}
+        windowSize={6}
+        removeClippedSubviews
         ListEmptyComponent={
           <View style={styles.empty}>
             <FeatherWave size={60} mode="static" glow />
-            <Text style={styles.emptyTitle}>No birds match that search</Text>
-            <Text style={styles.emptySub}>Try a broader term or pick a different category.</Text>
+            <Text style={styles.emptyTitle}>No birds match</Text>
+            <Text style={styles.emptySub}>Try a broader search or category.</Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <PressableScale
-              onPress={() => router.push(`/bird/${item.id}` as any)}
-              testID={`popular-${item.id}`}
-            >
-              <Image source={{ uri: item.image }} style={styles.img} />
-              <View style={styles.body}>
-                <Text style={styles.name} numberOfLines={1}>{item.commonName}</Text>
-                <Text style={styles.latin} numberOfLines={1}>{item.scientificName}</Text>
+        renderItem={({ item }) => {
+          const pre = getPrecachedDetail(item.id);
+          return (
+            <View style={styles.card}>
+              <PressableScale
+                onPress={() => router.push(`/bird/${item.id}` as any)}
+                testID={`popular-${item.id}`}
+              >
+                {pre?.thumb ? (
+                  <Image source={{ uri: pre.thumb }} style={styles.img} />
+                ) : (
+                  <View style={[styles.img, styles.imgPlaceholder]}>
+                    <Ionicons name="leaf-outline" size={26} color={colors.primary} />
+                  </View>
+                )}
+                <View style={styles.body}>
+                  <Text style={styles.name} numberOfLines={1}>{item.c}</Text>
+                  <Text style={styles.latin} numberOfLines={1}>{item.s}</Text>
+                </View>
+              </PressableScale>
+              <View style={styles.footer}>
+                <BirdCallPlayer
+                  scientificName={item.s}
+                  testID={`popular-${item.id}-play`}
+                />
               </View>
-            </PressableScale>
-            <View style={styles.footer}>
-              <BirdCallPlayer
-                scientificName={item.scientificName}
-                testID={`popular-${item.id}-play`}
-              />
             </View>
-          </View>
-        )}
+          );
+        }}
       />
     </View>
   );
@@ -138,6 +164,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.hairline, overflow: 'hidden',
   },
   img: { width: '100%', height: 130 },
+  imgPlaceholder: { backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' },
   body: { paddingHorizontal: spacing.s12, paddingTop: spacing.s12, paddingBottom: spacing.sm, gap: 4 },
   footer: { paddingHorizontal: spacing.s12, paddingBottom: spacing.s12 },
   name: { ...type.bodyL, color: colors.textPrimary, fontWeight: '700' },

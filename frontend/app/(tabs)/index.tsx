@@ -15,12 +15,17 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  SEED_BIRDS,
-  CATEGORIES,
   EXPLORE_TOPICS,
   EXPLORE_ARTICLES,
   OWL_AVATAR,
 } from '@/src/lib/birds';
+import {
+  CATEGORIES as CATALOG_CATEGORIES,
+  popularSpecies,
+  indexSize,
+  precacheSize,
+  getPrecachedDetail,
+} from '@/src/lib/catalog';
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import { getFreeUses, isProEffective } from '@/src/lib/state';
 import { PressableScale } from '@/src/components/PressableScale';
@@ -93,6 +98,24 @@ export default function Home() {
             )}
           </View>
 
+          {/* Sticky search bar */}
+          <PressableScale
+            onPress={() => router.push('/search' as any)}
+            style={styles.searchBar}
+            testID="home-search-bar"
+            pressedScale={0.985}
+            accessibilityLabel="Search birds"
+          >
+            <Ionicons name="search" size={16} color={colors.textTertiary} />
+            <Text style={styles.searchPlaceholder}>
+              Search {indexSize().toLocaleString()} species…
+            </Text>
+            <View style={styles.searchHint}>
+              <Ionicons name="flash" size={10} color={colors.primary} />
+              <Text style={styles.searchHintText}>{precacheSize()} instant</Text>
+            </View>
+          </PressableScale>
+
           {/* Hero ID card */}
           <View style={styles.heroWrap}>
             <ImageBackground
@@ -135,12 +158,12 @@ export default function Home() {
             testID="section-birds-near-you"
           />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-            {CATEGORIES.map((c) => (
+            {CATALOG_CATEGORIES.map((c) => (
               <PressableScale
                 key={c.id}
                 style={styles.categoryCard}
                 onPress={() => router.push(`/category/${encodeURIComponent(c.id)}` as any)}
-                testID={`category-${c.id.toLowerCase().replace(/\s+/g, '-')}`}
+                testID={`category-${c.id}`}
               >
                 <ImageBackground
                   source={{ uri: c.image }}
@@ -170,26 +193,35 @@ export default function Home() {
             testID="section-popular"
           />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-            {SEED_BIRDS.map((b) => (
-              <View key={b.id} style={styles.popCard}>
-                <PressableScale
-                  onPress={() => router.push(`/bird/${b.id}` as any)}
-                  testID={`popular-bird-${b.id}`}
-                >
-                  <Image source={{ uri: b.image }} style={styles.popImage} />
-                  <View style={styles.popBody}>
-                    <Text style={styles.popName} numberOfLines={1}>{b.commonName}</Text>
-                    <Text style={styles.popLatin} numberOfLines={1}>{b.scientificName}</Text>
+            {popularSpecies(12).map((b) => {
+              const pre = getPrecachedDetail(b.id);
+              return (
+                <View key={b.id} style={styles.popCard}>
+                  <PressableScale
+                    onPress={() => router.push(`/bird/${b.id}` as any)}
+                    testID={`popular-bird-${b.id}`}
+                  >
+                    {pre?.thumb ? (
+                      <Image source={{ uri: pre.thumb }} style={styles.popImage} />
+                    ) : (
+                      <View style={[styles.popImage, styles.popImagePlaceholder]}>
+                        <Ionicons name="leaf-outline" size={26} color={colors.primary} />
+                      </View>
+                    )}
+                    <View style={styles.popBody}>
+                      <Text style={styles.popName} numberOfLines={1}>{b.c}</Text>
+                      <Text style={styles.popLatin} numberOfLines={1}>{b.s}</Text>
+                    </View>
+                  </PressableScale>
+                  <View style={styles.popFooter}>
+                    <BirdCallPlayer
+                      scientificName={b.s}
+                      testID={`popular-bird-play-${b.id}`}
+                    />
                   </View>
-                </PressableScale>
-                <View style={styles.popFooter}>
-                  <BirdCallPlayer
-                    scientificName={b.scientificName}
-                    testID={`popular-bird-play-${b.id}`}
-                  />
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </ScrollView>
 
           {/* Explore chips with filter state */}
@@ -394,10 +426,30 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   popImage: { width: '100%', height: 120 },
+  popImagePlaceholder: {
+    backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',
+    borderBottomWidth: 1, borderBottomColor: colors.hairline,
+  },
   popBody: { padding: spacing.md, paddingBottom: spacing.sm, gap: 4 },
   popName: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700' },
   popLatin: { ...type.bodySm, color: colors.textTertiary, fontStyle: 'italic' },
   popFooter: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
+  searchBar: {
+    marginHorizontal: 20, marginBottom: spacing.lg,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    height: 48, paddingHorizontal: 16,
+    backgroundColor: colors.card,
+    borderRadius: radii.pill,
+    borderWidth: 1, borderColor: colors.hairline,
+  },
+  searchPlaceholder: { ...type.body, color: colors.textTertiary, flex: 1 },
+  searchHint: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(123,160,91,0.14)',
+    borderWidth: 1, borderColor: 'rgba(123,160,91,0.3)',
+  },
+  searchHintText: { ...type.micro, color: colors.primary },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

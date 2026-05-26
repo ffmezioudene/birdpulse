@@ -424,6 +424,130 @@ async def bird_detail(bird_id: str):
     raise HTTPException(status_code=404, detail="Bird not found")
 
 
+# ---------------------------- Wikipedia proxy -----------------------------
+
+@api_router.get("/wiki/summary")
+async def wiki_summary(title: str):
+    """Server-side Wikipedia REST proxy with simple in-memory caching.
+
+    Tries the scientific binomial first (Wikipedia keeps these as redirects
+    that almost always resolve), then falls back to the common-name title.
+    The shape exposed to the frontend is intentionally compact.
+    """
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+
+    candidates = [title.strip()]
+    # If caller sent "Common Name | Scientific name" we try both.
+    if "|" in title:
+        parts = [p.strip() for p in title.split("|") if p.strip()]
+        candidates = parts
+
+    headers = {
+        "User-Agent": "BirdLensApp/1.0 (https://birdlens.app; contact@birdlens.app) python-httpx",
+        "Accept": "application/json",
+        "Api-User-Agent": "BirdLensApp/1.0 (contact@birdlens.app)",
+    }
+    async with httpx.AsyncClient(timeout=12, headers=headers, follow_redirects=True) as http:
+        for t in candidates:
+            slug = t.replace(" ", "_")
+            url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{slug}"
+            try:
+                r = await http.get(url)
+                if r.status_code != 200:
+                    continue
+                j = r.json()
+                if j.get("type") == "disambiguation":
+                    continue
+                extract = (j.get("extract") or "").strip()
+                if len(extract) < 60:
+                    continue
+                return {
+                    "title": j.get("title", t),
+                    "summary": extract,
+                    "thumb": (j.get("thumbnail") or {}).get("source", ""),
+                    "image": (j.get("originalimage") or {}).get("source", "")
+                            or (j.get("thumbnail") or {}).get("source", ""),
+                    "wikiUrl": ((j.get("content_urls") or {}).get("desktop") or {}).get("page", ""),
+                }
+            except Exception as e:
+                logger.warning("wiki fetch failed for %s: %s", t, e)
+                continue
+    return {"title": title, "summary": "", "thumb": "", "image": "", "wikiUrl": ""}
+
+
+# ---------------------------- AI enrichment ------------------------------
+
+class EnrichRequest(BaseModel):
+    common_name: str
+    scientific_name: str
+    family: Optional[str] = ""
+    order: Optional[str] = ""
+
+
+@api_router.post("/birds/enrich")
+async def enrich_bird(req: EnrichRequest):
+    """Generate the premium "How to Identify / Key Facts / Nesting / Fun Facts"
+    fields for any species via GPT-4o, returning structured JSON.
+
+    Cached client-side after first call so we only pay once per bird per device.
+    """
+    api_key = os.environ.get("EMERGENT_LLM_KEY") or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    prompt = (
+        f"Return strict JSON describing the bird species below for a premium field "
+        f"guide. Use real, verified knowledge — never invent facts.\n\n"
+        f"Common name: {req.common_name}\n"
+        f"Scientific name: {req.scientific_name}\n"
+        f"Family: {req.family or '?'}\n"
+        f"Order: {req.order or '?'}\n\n"
+        "Respond ONLY with valid JSON of shape:\n"
+        "{\n"
+        '  "shortDescription": "1-2 sentence vivid id",\n'
+        '  "howToIdentify": "field-mark paragraph",\n'
+        '  "size": "length in cm",\n'
+        '  "wingspan": "wingspan in cm or m",\n'
+        '  "wingShape": "short description",\n'
+        '  "diet": "what they eat",\n'
+        '  "habitat": "where they live",\n'
+        '  "nestingBehavior": "nesting paragraph",\n'
+        '  "migrationStatus": "resident or migrant summary",\n'
+        '  "rangeSummary": "where in the world",\n'
+        '  "conservationStatus": "IUCN status word(s)",\n'
+        '  "funFacts": ["3 short bullet facts"]\n'
+        "}\n"
+        "Keep paragraphs concise. If unsure of a value, return an empty string."
+    )
+
+    session_id = f"enrich-{uuid.uuid4()}"
+    chat = (
+        LlmChat(api_key=api_key, session_id=session_id,
+                system_message="You are an ornithology field-guide author.")
+        .with_model("openai", "gpt-4o")
+    )
+    try:
+        reply = await chat.send_message(UserMessage(text=prompt))
+    except Exception as e:
+        logger.exception("enrich failed: %s", e)
+        raise HTTPException(status_code=502, detail="LLM error")
+
+    raw = (reply or "").strip()
+    # Strip ```json fences if present
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.S).strip()
+    try:
+        return json.loads(raw)
+    except Exception:
+        # Try to recover an outer { ... } block
+        m = re.search(r"\{[\s\S]*\}", raw)
+        if not m:
+            raise HTTPException(status_code=502, detail="LLM returned non-JSON")
+        return json.loads(m.group(0))
+
+
+
 # ---------------------------- Seed catalog ----------------------------
 
 SEED_BIRDS = [
