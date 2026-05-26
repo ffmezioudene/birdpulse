@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Image, TouchableOpacity,
-  ActivityIndicator, Share, Platform,
+  Share, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAudioPlayer } from 'expo-audio';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { colors, type, spacing, radii } from '@/src/theme';
 import { fetchXenoCanto, XenoRecording } from '@/src/lib/api';
@@ -20,6 +21,13 @@ import { lookupByScientific, lookupByCommon, hasPrecachedDetail, type Species } 
 import { PressableScale } from '@/src/components/PressableScale';
 import { FeatherWave } from '@/src/components/FeatherWave';
 import { SpeciesThumb } from '@/src/components/SpeciesThumb';
+import {
+  SkeletonBlock,
+  SkeletonParagraphCard,
+  SkeletonBulletsCard,
+  SkeletonConfusedRow,
+  SkeletonStatusRow,
+} from '@/src/components/Skeletons';
 
 type TabKey = 'photos' | 'description' | 'sounds' | 'range';
 
@@ -183,7 +191,7 @@ export default function BirdDetail() {
               {heroImage ? (
                 <Image source={{ uri: heroImage }} style={styles.bigPhoto} />
               ) : (
-                <SkeletonCard height={260} />
+                <SkeletonBlock width="100%" height={260} radius={20} />
               )}
               {detail.wikiUrl ? (
                 <Text style={styles.attribution}>Photo via Wikimedia Commons</Text>
@@ -193,9 +201,10 @@ export default function BirdDetail() {
           {tab === 'sounds' && (
             <View>
               {loadingSound ? (
-                <View style={{ alignItems: 'center', padding: spacing.xl }}>
-                  <FeatherWave size={56} mode="static" glow />
-                  <Text style={styles.skeletonHint}>Loading recordings…</Text>
+                <View style={{ gap: 10 }}>
+                  <SkeletonStatusRow label="Loading field recordings…" />
+                  <SkeletonParagraphCard titleWidth="40%" lines={2} />
+                  <SkeletonParagraphCard titleWidth="35%" lines={2} />
                 </View>
               ) : recs.length === 0 ? (
                 <Text style={styles.emptyText}>
@@ -345,16 +354,13 @@ function DescriptionTab({
 
   if (!hasAny) {
     return (
-      <View>
-        <SkeletonCard height={120} />
-        <View style={{ height: 12 }} />
-        <SkeletonCard height={80} />
-        <View style={{ height: 12 }} />
-        <SkeletonCard height={140} />
-        <View style={{ alignItems: 'center', marginTop: spacing.lg }}>
-          <FeatherWave size={48} mode="static" glow />
-          <Text style={styles.skeletonHint}>Loading rich detail…</Text>
-        </View>
+      <View style={{ gap: spacing.md }}>
+        <SkeletonStatusRow label="Gathering detailed info…" />
+        <SkeletonParagraphCard titleWidth="35%" lines={3} />
+        <SkeletonParagraphCard titleWidth="50%" lines={4} />
+        <SkeletonBulletsCard rows={5} />
+        <SkeletonParagraphCard titleWidth="30%" lines={2} />
+        <SkeletonConfusedRow />
       </View>
     );
   }
@@ -434,12 +440,7 @@ function DescriptionTab({
       {/* "Ask about this bird" — the killer differentiator */}
       <AskOwlCard birdName={detail.commonName} onPress={onAskOwl} />
 
-      {enriching && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8 }}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={styles.skeletonHint}>Enriching with AI…</Text>
-        </View>
-      )}
+      {enriching && <SkeletonStatusRow label="Gathering more details…" />}
     </View>
   );
 }
@@ -457,7 +458,10 @@ function ExpandableCard({
 }) {
   const [open, setOpen] = useState(!!initiallyOpen);
   return (
-    <View style={styles.sectionCard}>
+    <Animated.View
+      entering={FadeIn.duration(320)}
+      style={styles.sectionCard}
+    >
       <PressableScale onPress={() => setOpen((o) => !o)} pressedScale={0.99} style={styles.sectionHead}>
         <Text style={styles.sectionTitle}>{title}</Text>
         <Ionicons
@@ -478,7 +482,7 @@ function ExpandableCard({
             ))}
         </View>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -534,26 +538,6 @@ function AskOwlCard({ birdName, onPress }: { birdName: string; onPress: () => vo
   );
 }
 
-
-
-function SkeletonCard({ height = 100 }: { height?: number }) {
-  return (
-    <View
-      style={{
-        height,
-        backgroundColor: colors.card,
-        borderRadius: radii.card,
-        borderWidth: 1,
-        borderColor: colors.hairline,
-        overflow: 'hidden',
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}
-    >
-      <FeatherWave size={36} mode="static" />
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },

@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 8 — Clear skeleton loaders upgrade FULLY VERIFIED. On non-precached bird /bird/african-rail (Rallus caerulescens), Description tab default first paint shows: (a) pulsing sage dot + italic 'Gathering detailed info…' status row immediately under tabs; (b) multiple content-shaped dark skeleton cards (bgTertiary #141614 base) with rounded 20px corners, each containing a short title bar + 2-4 decreasing-width body lines; (c) a bullet-style Key Facts skeleton; (d) all skeletons animate with a subtle sage-tinted horizontal shimmer sweep (rgba(123,160,91,0.10) peak) looping ~1.4s; (e) NO FeatherWave logos in any of the card-slot loading placeholders. After ~15-18s the placeholders are replaced by real ExpandableCards (Overview, How to identify, Key facts, Diet, Habitat, …, Often confused with, Curious about this bird? Ask Owl CTA) — confirmed hasOverview/hasHowTo/hasKeyFacts/hasConfused/hasAskOwl all True post-enrich and hasGather/hasGatherMore False. Sounds tab shows skeleton paragraph cards on first paint then resolves to empty-state ('No recordings yet — add a XENO_CANTO_KEY…') — no FeatherWave. Photos tab shows real Wikimedia hero image (skeleton fallback path verified in code for missing-image case). Precached bird /bird/northern-cardinal renders 'Offline ready' badge + Overview content INSTANTLY at first paint with hasGather=False (no skeleton flash) — precache short-circuits the empty-state code path because detail.summary is already populated at instant time. Visual checks pass: skeleton corners rounded, base dark, shimmer subtle and sage-tinted, status text readable and italic with pulsing sage dot. No layout jump observed when skeletons swap for real ExpandableCards (FadeIn 320ms entrance smooths the transition). No new console errors introduced; pre-existing 'shadow* style props deprecated' and 'props.pointerEvents deprecated' web-only warnings persist from prior iterations.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* / pointerEvents style props (web warnings)",
+        "issue": "Pre-existing web-only warnings: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' and 'props.pointerEvents is deprecated. Use style.pointerEvents'. Not introduced by this iteration; native iOS/Android unaffected. Reference: pre-existing from iteration_7."
+      }
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_8.json"],
+  "action_items": [
+    "OPTIONAL polish: Hero image placeholder (line 113-115 of /app/frontend/app/bird/[id].tsx) still uses FeatherWave when heroImage is absent. For non-precached birds without a Wikimedia image, this FeatherWave shows briefly on first paint before image loads. The review request specifically said 'NO FeatherWave logos in any of the loading slots' — interpretation: the card-slot placeholders. The hero placeholder is a separate area and arguably fine, but for full consistency consider replacing with a SkeletonBlock(height=full, radius=0). Not blocking.",
+    "OPTIONAL: Sounds tab skeleton renders only while loadingSound===true. On African Rail the Xeno-canto fetch resolves nearly instantly with zero recordings (no XENO_CANTO_KEY backend), so the skeleton is barely visible. Code path is correct; just a function of the upstream API speed."
+  ],
+  "critical_code_review_comments": [
+    "Skeletons.tsx is clean (193 lines) and reuses SkeletonBlock as a single primitive — good DRY.",
+    "SHIMMER_DURATION=1400ms matches review request (~1.4s) ✓; SHIMMER_COLORS gradient peaks at rgba(123,160,91,0.10) matching the requested sage tint ✓.",
+    "SkeletonStatusRow uses Animated.Text for the label but the opacity animation only drives the dot — label is static. Acceptable since the pulsing dot is the cue, but consider also pulsing the text opacity slightly (e.g., 0.7→1.0) for extra clarity.",
+    "DescriptionTab.hasAny check (line 344-353) gates the skeleton/real-content switch on the union of all enriched fields — correct. Precached birds hit hasAny=true on first paint because instant detail already has detail.summary populated, so they correctly skip skeletons.",
+    "ExpandableCard now wraps with Animated.View entering=FadeIn.duration(320) — verified visually that cards fade in progressively as enrichment lands.",
+    "bird/[id].tsx file size is ~676 lines (down from 693). Still close to 700-line limit; consider extracting the Description tab into its own module as noted in iteration_7.",
+    "SkeletonBlock width type uses template-literal percent (`${number}%`) — clean typing. The bullet dot uses `width={6 as any}` because the type union only allows number or `${number}%`; consider widening the width prop to accept plain number.",
+    "expo-linear-gradient is already an installed dep — no new dependency added. Good."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (not tested per request)", "frontend": "100% — all 10 acceptance criteria met"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Skeleton loaders live in /app/frontend/src/components/Skeletons.tsx (SkeletonBlock, SkeletonParagraphCard, SkeletonBulletsCard, SkeletonConfusedRow, SkeletonStatusRow). Bird detail at /bird/[id].tsx uses them via DescriptionTab.hasAny gating + Sounds tab loadingSound branch + Photos tab missing-hero branch. To force a non-precached bird trigger the skeletons, use /bird/african-rail or any species not in src/lib/catalog precache. Precached birds (e.g. northern-cardinal, scarlet-tanager) skip skeletons because instant detail already populates detail.summary. Mobile viewport 412x915 works; onboarding bypass via Continue x4 + Get Started + paywall close still required. Cache: bird:detail:v2:* / bird:ai:v2:* in localStorage — clear to retest skeleton appearance.",
+  "rca_of_issue": "N/A — all acceptance criteria pass. Two optional polish nits noted (hero FeatherWave fallback + sounds-skeleton brief visibility) but neither violates the explicit review checklist."
+}
