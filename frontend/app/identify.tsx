@@ -18,10 +18,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import { File as FsFile } from 'expo-file-system';
 import * as Location from 'expo-location';
 import {
   AudioModule,
   RecordingPresets,
+  setAudioModeAsync,
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
@@ -158,10 +160,20 @@ export default function Identify() {
     if (!(await canStartIdentification())) return;
 
     try {
+      // iOS requires recording mode on the audio session before record() will fire.
+      // Keep playsInSilentMode:true so we don't regress silent-switch playback after recording.
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
       await recorder.prepareToRecordAsync();
       recorder.record();
       setRecordSeconds(0);
     } catch (e: any) {
+      // Restore playback mode on failure so the rest of the app stays correct.
+      try {
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      } catch {}
       Alert.alert('Recording failed', e?.message || 'Could not start recording.');
     }
   };
@@ -171,13 +183,36 @@ export default function Identify() {
     setAnalyzing(true);
     try {
       await recorder.stop();
+      // Restore playback-friendly audio session as soon as we've stopped — so
+      // any follow-up bird-call playback (or returning to the rest of the app)
+      // keeps working with the silent switch on.
+      try {
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      } catch {}
       const uri = recorder.uri;
       if (!uri) throw new Error('No audio captured.');
 
-      // Read recorded m4a as base64
-      const audioBase64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      // Read recorded m4a as base64.
+      // expo-file-system v19 (SDK 54+) dropped EncodingType / readAsStringAsync
+      // from the root export — use the new File class. Fall back to the legacy
+      // API for older SDKs.
+      let audioBase64 = '';
+      try {
+        // New API: File(uri).base64()
+        audioBase64 = await new FsFile(uri).base64();
+      } catch (newApiErr) {
+        // Legacy fallback (expo-file-system <= v18 or /legacy subpath).
+        const legacyRead = (FileSystem as any)?.readAsStringAsync;
+        const legacyEnum = (FileSystem as any)?.EncodingType?.Base64;
+        if (typeof legacyRead === 'function' && legacyEnum) {
+          audioBase64 = await legacyRead(uri, { encoding: legacyEnum });
+        } else {
+          throw newApiErr;
+        }
+      }
+      if (!audioBase64 || audioBase64.length < 100) {
+        throw new Error('Could not read the recorded audio file.');
+      }
 
       // Best-effort location + month (no prompt if not previously granted)
       let latitude: number | undefined;
@@ -206,12 +241,23 @@ export default function Identify() {
         params: { type: 'sound', payload: JSON.stringify(result) },
       });
     } catch (e: any) {
+      // Make sure we don't leave the session stuck in recording mode on any failure.
+      try {
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      } catch {}
       Alert.alert('Sound ID failed', e?.message || 'Try again with a clearer recording.');
     } finally {
       setAnalyzing(false);
       setRecordSeconds(0);
     }
   };
+
+  // Safety net — if the screen unmounts mid-recording, restore playback mode.
+  useEffect(() => {
+    return () => {
+      setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
+    };
+  }, []);
 
   // Live recording timer
   useEffect(() => {
