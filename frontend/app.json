@@ -64,6 +64,12 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Show birds near you and log sightings"
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Record bird calls to identify species"
+        }
       ]
     ],
     "experiments": {

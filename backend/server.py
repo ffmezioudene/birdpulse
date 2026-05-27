@@ -48,6 +48,10 @@ LLM_KEY = OPENAI_API_KEY or EMERGENT_LLM_KEY
 # An OpenAI key here would obviously not work on Gemini, so we never fall back to it.
 GEMINI_KEY = GEMINI_API_KEY or EMERGENT_LLM_KEY
 
+# Perch 2.0 Sound ID — Modal-hosted service.
+PERCH_MODAL_URL = os.environ.get("PERCH_MODAL_URL", "")
+PERCH_SHARED_SECRET = os.environ.get("PERCH_SHARED_SECRET", "")
+
 VISION_MODEL_PROVIDER = "openai"
 VISION_MODEL_NAME = "gpt-4o"
 CHAT_MODEL_PROVIDER = "openai"
@@ -599,6 +603,113 @@ async def identify_sound_gemini_from_url(req: GeminiSoundFromUrlRequest):
             pass
 
     return _normalize_gemini_payload(data, model)
+
+
+# ---------------------------- Perch 2.0 Sound ID (Modal-hosted) -----------
+
+class PerchSoundRequest(BaseModel):
+    audio_base64: str
+    mime_type: Optional[str] = "audio/mp4"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    month: Optional[str] = None
+    top_k: int = 5
+
+
+class PerchSoundFromUrlRequest(BaseModel):
+    """Test-only — server downloads the audio URL and sends to Perch."""
+    audio_url: str
+    mime_type: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    month: Optional[str] = None
+    top_k: int = 5
+
+
+async def _call_perch(audio_b64: str, mime: str, top_k: int,
+                       lat: Optional[float], lng: Optional[float],
+                       month: Optional[str]) -> Dict[str, Any]:
+    if not PERCH_MODAL_URL or not PERCH_SHARED_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="Perch service not configured (PERCH_MODAL_URL / PERCH_SHARED_SECRET).",
+        )
+    body = {
+        "secret": PERCH_SHARED_SECRET,
+        "audio_base64": audio_b64,
+        "mime_type": mime,
+        "top_k": top_k,
+        "latitude": lat,
+        "longitude": lng,
+        "month": month,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(PERCH_MODAL_URL, json=body)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Perch service unreachable: {e}")
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Perch {r.status_code}: {r.text[:200]}")
+    return r.json()
+
+
+@api_router.post("/identify/sound-perch")
+async def identify_sound_perch(req: PerchSoundRequest):
+    """Real bird-sound ID via Google Perch 2.0 on Modal.
+
+    Returns the Perch service payload as-is. The client maps each result's
+    `scientificName` to our local species index for tappable detail pages.
+    """
+    b64 = _strip_b64_prefix(req.audio_base64)
+    if not b64:
+        raise HTTPException(status_code=400, detail="audio_base64 is required")
+    data = await _call_perch(
+        b64, req.mime_type or "audio/mp4", req.top_k,
+        req.latitude, req.longitude, req.month,
+    )
+    # Log to history for debugging.
+    try:
+        await db.identifications.insert_one(
+            {
+                "id": str(uuid.uuid4()),
+                "type": "sound-perch",
+                "context": {"lat": req.latitude, "lng": req.longitude, "month": req.month},
+                "result": data,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+    except Exception:
+        pass
+    return data
+
+
+@api_router.post("/identify/sound-perch-from-url")
+async def identify_sound_perch_from_url(req: PerchSoundFromUrlRequest):
+    """Server-side accuracy benchmark — fetch a Xeno-canto URL and call Perch."""
+    if not req.audio_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="audio_url must be http(s)")
+
+    headers = {"User-Agent": "BirdLensApp/1.0 (https://birdlens.app)"}
+    try:
+        async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as http:
+            r = await http.get(req.audio_url)
+            r.raise_for_status()
+            raw = r.content
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"download failed: {e}")
+
+    url_lower = req.audio_url.lower().split("?")[0]
+    guessed_mime = "audio/mp3"
+    for e, m in _AUDIO_MIME_BY_EXT.items():
+        if url_lower.endswith(e):
+            guessed_mime = m
+            break
+    mime = (req.mime_type or guessed_mime).lower()
+
+    return await _call_perch(
+        base64.b64encode(raw).decode("ascii"), mime, req.top_k,
+        req.latitude, req.longitude, req.month,
+    )
 
 
 @api_router.post("/chat", response_model=ChatResponse)

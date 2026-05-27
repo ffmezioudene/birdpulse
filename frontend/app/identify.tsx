@@ -9,6 +9,7 @@ import {
   Easing,
   Platform,
   Alert,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +17,14 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Location from 'expo-location';
+import {
+  AudioModule,
+  RecordingPresets,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from 'expo-audio';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
@@ -25,7 +34,7 @@ import {
   getFreeUses,
   isProEffective,
 } from '@/src/lib/state';
-import { identifyPhoto, identifySound } from '@/src/lib/api';
+import { identifyPhoto, identifySoundPerch, perchToIdentifyResult } from '@/src/lib/api';
 
 type Mode = 'photo' | 'sound';
 
@@ -37,6 +46,12 @@ export default function Identify() {
   const [analyzing, setAnalyzing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const pulse = useRef(new Animated.Value(0)).current;
+
+  // Sound ID — Perch 2.0 real audio path.
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder);
+  const isRecording = recorderState.isRecording;
+  const [recordSeconds, setRecordSeconds] = useState(0);
 
   useEffect(() => {
     Animated.loop(
@@ -119,37 +134,93 @@ export default function Identify() {
     }
   };
 
-  const recordSound = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert(
-      'Sound ID',
-      'Recording bird calls requires a native build. In this preview, we identify from a sample spectrogram. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Run sample',
-          onPress: async () => {
-            if (!(await canStartIdentification())) return;
-            setAnalyzing(true);
-            try {
-              // Tiny placeholder spectrogram-style PNG. Backend may return "Unknown" — acceptable for preview.
-              const SAMPLE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=';
-              const result = await identifySound(SAMPLE);
-              await recordSuccessfulUse();
-              router.replace({
-                pathname: '/result',
-                params: { type: 'sound', payload: JSON.stringify(result) },
-              });
-            } catch (e: any) {
-              Alert.alert('Sound ID failed', e?.message || 'Try again.');
-            } finally {
-              setAnalyzing(false);
-            }
-          },
-        },
-      ]
-    );
+  // -------- Sound ID via Perch 2.0 (real audio recording) --------
+
+  const startSoundRecording = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    // Request microphone permission (contextual flow per system guidelines)
+    const perm = await AudioModule.requestRecordingPermissionsAsync();
+    if (!perm.granted) {
+      if (perm.canAskAgain === false) {
+        Alert.alert(
+          'Microphone access needed',
+          'Enable microphone in Settings so BirdLens can listen to bird calls.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ],
+        );
+      } else {
+        Alert.alert('Microphone access needed', 'BirdLens uses the microphone to listen to bird calls.');
+      }
+      return;
+    }
+    if (!(await canStartIdentification())) return;
+
+    try {
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setRecordSeconds(0);
+    } catch (e: any) {
+      Alert.alert('Recording failed', e?.message || 'Could not start recording.');
+    }
   };
+
+  const stopSoundRecording = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setAnalyzing(true);
+    try {
+      await recorder.stop();
+      const uri = recorder.uri;
+      if (!uri) throw new Error('No audio captured.');
+
+      // Read recorded m4a as base64
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Best-effort location + month (no prompt if not previously granted)
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+      try {
+        const status = await Location.getForegroundPermissionsAsync();
+        if (status.granted) {
+          const pos = await Location.getLastKnownPositionAsync({});
+          latitude = pos?.coords.latitude;
+          longitude = pos?.coords.longitude;
+        }
+      } catch {}
+      const month = new Date().toLocaleString('en-US', { month: 'long' });
+
+      const perch = await identifySoundPerch(audioBase64, 'audio/mp4', {
+        latitude,
+        longitude,
+        month,
+        topK: 5,
+      });
+      const result = perchToIdentifyResult(perch);
+      await recordSuccessfulUse();
+
+      router.replace({
+        pathname: '/result',
+        params: { type: 'sound', payload: JSON.stringify(result) },
+      });
+    } catch (e: any) {
+      Alert.alert('Sound ID failed', e?.message || 'Try again with a clearer recording.');
+    } finally {
+      setAnalyzing(false);
+      setRecordSeconds(0);
+    }
+  };
+
+  // Live recording timer
+  useEffect(() => {
+    if (!isRecording) return;
+    const id = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [isRecording]);
+
+  const onSoundMicPress = () => (isRecording ? stopSoundRecording() : startSoundRecording());
 
   return (
     <View style={styles.root} testID="identify-screen">
@@ -170,7 +241,22 @@ export default function Identify() {
             <LinearGradient colors={['#1F2A1A', '#0E1410']} style={styles.preview}>
               <View style={styles.previewInner}>
                 {mode === 'sound' ? (
-                  <Ionicons name="mic-outline" size={64} color={colors.primary} />
+                  <View style={{ alignItems: 'center', gap: 12 }}>
+                    {isRecording ? (
+                      <>
+                        <View style={styles.recDot} />
+                        <Text style={styles.recTime}>
+                          {String(Math.floor(recordSeconds / 60)).padStart(2, '0')}:{String(recordSeconds % 60).padStart(2, '0')}
+                        </Text>
+                        <Text style={styles.recHint}>Listening… tap stop when done</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="mic-outline" size={64} color={colors.primary} />
+                        <Text style={styles.recHint}>Hold the phone toward the bird — tap to record</Text>
+                      </>
+                    )}
+                  </View>
                 ) : (
                   <View style={{ alignItems: 'center', gap: 8 }}>
                     <Ionicons name="camera-outline" size={56} color={colors.primary} />
@@ -218,8 +304,16 @@ export default function Identify() {
           ) : (
             <>
               <View style={{ width: 60 }} />
-              <TouchableOpacity style={[styles.shutter, { backgroundColor: colors.secondary }]} onPress={recordSound} testID="identify-record">
-                <Ionicons name="mic" size={28} color="#0E0F0D" />
+              <TouchableOpacity
+                style={[
+                  styles.shutter,
+                  { backgroundColor: isRecording ? '#E04F4F' : colors.secondary },
+                ]}
+                onPress={onSoundMicPress}
+                disabled={analyzing}
+                testID="identify-record"
+              >
+                <Ionicons name={isRecording ? 'stop' : 'mic'} size={28} color="#0E0F0D" />
               </TouchableOpacity>
               <View style={{ width: 60 }} />
             </>
@@ -315,6 +409,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
   scanText: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700' },
+  recDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#E04F4F',
+  },
+  recTime: {
+    ...type.title,
+    color: colors.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  recHint: {
+    ...type.bodySm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    maxWidth: 240,
+  },
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
