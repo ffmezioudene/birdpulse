@@ -36,7 +36,7 @@ import {
   getFreeUses,
   isProEffective,
 } from '@/src/lib/state';
-import { identifyPhoto, identifySoundPerch, perchToIdentifyResult } from '@/src/lib/api';
+import { identifyPhoto, identifySoundPerch, perchToIdentifyResult, warmupSoundPerch } from '@/src/lib/api';
 
 type Mode = 'photo' | 'sound';
 
@@ -54,6 +54,17 @@ export default function Identify() {
   const recorderState = useAudioRecorderState(recorder);
   const isRecording = recorderState.isRecording;
   const [recordSeconds, setRecordSeconds] = useState(0);
+  const [analyzingText, setAnalyzingText] = useState('Analyzing audio…');
+
+  // Warmup the Modal Perch container as soon as the user enters Sound mode.
+  // Fire-and-forget; the HTTP call returns instantly when Perch is warm and
+  // in 20-40 s when it was cold. Either way the user's recording time covers
+  // most of the wake budget so by the time they tap stop, Perch is ready.
+  useEffect(() => {
+    if (mode === 'sound') {
+      warmupSoundPerch();
+    }
+  }, [mode]);
 
   useEffect(() => {
     Animated.loop(
@@ -181,8 +192,10 @@ export default function Identify() {
   const stopSoundRecording = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setAnalyzing(true);
+    setAnalyzingText('Stopping recording…');
     try {
       await recorder.stop();
+      setAnalyzingText('Listening to the call…');
       // Restore playback-friendly audio session as soon as we've stopped — so
       // any follow-up bird-call playback (or returning to the rest of the app)
       // keeps working with the silent switch on.
@@ -227,6 +240,7 @@ export default function Identify() {
       } catch {}
       const month = new Date().toLocaleString('en-US', { month: 'long' });
 
+      setAnalyzingText('Matching to 14,000+ species…');
       const perch = await identifySoundPerch(audioBase64, 'audio/mp4', {
         latitude,
         longitude,
@@ -329,7 +343,7 @@ export default function Identify() {
           {analyzing && (
             <View style={styles.scanOverlay} testID="analyzing-overlay">
               <FeatherWave size={90} mode="loading" glow />
-              <Text style={styles.scanText}>Analyzing…</Text>
+              <Text style={styles.scanText}>{mode === 'sound' ? analyzingText : 'Analyzing…'}</Text>
             </View>
           )}
         </View>

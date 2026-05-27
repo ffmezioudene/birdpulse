@@ -23,6 +23,8 @@ import { SEED_BIRDS } from '@/src/lib/birds';
 import { FeatherWave } from '@/src/components/FeatherWave';
 import { PolaroidCard } from '@/src/components/PolaroidCard';
 
+const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || '';
+
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 export default function Result() {
@@ -36,6 +38,30 @@ export default function Result() {
   const [playing, setPlaying] = useState(false);
   const [dropped, setDropped] = useState(false);
   const player = useAudioPlayer(null);
+  const [wikiImage, setWikiImage] = useState<string | null>(null);
+
+  // Fetch a real Wikipedia thumbnail for the identified species (Sound ID and
+  // any photo result whose species isn't in our 25-bird SEED_BIRDS set). This
+  // replaces the old fallback that incorrectly displayed SEED_BIRDS[0] (the
+  // Northern Cardinal) for unrecognised species.
+  useEffect(() => {
+    if (!data || params.imageBase64) return;
+    const sci = data.scientificName?.trim();
+    const common = data.commonName?.trim();
+    if (!sci && !common) return;
+    const title = sci || common;
+    const url = `${BASE}/api/wiki/summary?title=${encodeURIComponent(`${sci}|${common}`)}`;
+    let cancelled = false;
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled || !j) return;
+        const img = j.image || j.thumb;
+        if (img) setWikiImage(img);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [data, params.imageBase64]);
 
   // Animations
   const polaroidScale = useRef(new Animated.Value(1)).current;
@@ -129,14 +155,27 @@ export default function Result() {
     );
   }
 
-  const heroImage = params.imageBase64
-    ? `data:image/jpeg;base64,${params.imageBase64}`
-    : SEED_BIRDS.find((b) => b.commonName.toLowerCase() === data.commonName.toLowerCase())?.image
-      || SEED_BIRDS[0].image;
+  // Find a matching SEED bird (only for the 25 hardcoded common ones — used
+  // to enable the "View full details" deep-link to /bird/[id]). Matching by
+  // BOTH scientific name (more precise) and common name (legacy fallback).
+  const match = SEED_BIRDS.find((b) => {
+    const sciMatch = data.scientificName &&
+      (b as any).scientificName?.toLowerCase?.() === data.scientificName.toLowerCase();
+    const nameMatch = b.commonName.toLowerCase() === data.commonName.toLowerCase();
+    return sciMatch || nameMatch;
+  });
 
-  const match = SEED_BIRDS.find(
-    (b) => b.commonName.toLowerCase() === data.commonName.toLowerCase()
-  );
+  // Hero image resolution priority:
+  //   1. The camera capture (Photo ID)
+  //   2. Wikipedia thumb for the *actual* identified species (fetched async)
+  //   3. SEED_BIRDS hit (only when scientific/common name actually matches)
+  //   4. Transparent dark placeholder — NEVER fall back to a random seed image
+  //      (that's how a European Robin ended up showing a Northern Cardinal).
+  const heroImage =
+    (params.imageBase64 ? `data:image/jpeg;base64,${params.imageBase64}` : null) ||
+    wikiImage ||
+    match?.image ||
+    'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Bird_silhouette.svg/240px-Bird_silhouette.svg.png';
 
   const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 

@@ -653,6 +653,31 @@ async def _call_perch(audio_b64: str, mime: str, top_k: int,
     return r.json()
 
 
+def _perch_warmup_url() -> str:
+    """Modal deploys the warmup endpoint at the same prefix but ending in
+    `-warmup.modal.run` instead of `-predict.modal.run`."""
+    return PERCH_MODAL_URL.replace("-predict.modal.run", "-warmup.modal.run")
+
+
+@api_router.get("/identify/sound-perch/warmup")
+async def warmup_perch():
+    """Lightweight ping that wakes the Modal Perch container. The mobile app
+    fires this as soon as the user enters Sound ID mode so the container is
+    warm by the time they finish recording. No-op if Perch isn't configured.
+    """
+    if not PERCH_MODAL_URL:
+        return {"ok": False, "configured": False}
+    url = _perch_warmup_url()
+    try:
+        # Long-ish client timeout — first wake can be 20-40s — but caller can
+        # close the request early if they don't care to wait for the 200.
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.get(url)
+        return {"ok": r.status_code == 200, "status": r.status_code, "body": r.text[:200]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 @api_router.post("/identify/sound-perch")
 async def identify_sound_perch(req: PerchSoundRequest):
     """Real bird-sound ID via Google Perch 2.0 on Modal.

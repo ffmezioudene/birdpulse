@@ -127,6 +127,18 @@ export async function identifySoundPerch(
   });
 }
 
+/** Fire-and-forget Modal warmup ping. Returns within ~50 ms when the Perch
+ * container is already warm, otherwise wakes it in the background (~20-40 s).
+ * The mobile app calls this when the user enters Sound ID mode so the
+ * container is ready by the time they tap stop. */
+export function warmupSoundPerch(): Promise<void> {
+  const url = `${BASE}/api/identify/sound-perch/warmup`;
+  // No await on the response; we just want the HTTP roundtrip to *start*.
+  return fetch(url, { method: 'GET' })
+    .then(() => undefined)
+    .catch(() => undefined);
+}
+
 /** Map a Perch response into our existing IdentifyResult shape using the
  * local species catalog (no extra round-trip needed). */
 import { lookupByScientific } from './catalog';

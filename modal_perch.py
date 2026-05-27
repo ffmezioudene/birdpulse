@@ -67,7 +67,7 @@ secret = modal.Secret.from_name("birdlens-perch")
     cpu=4.0,
     memory=4096,
     timeout=120,
-    scaledown_window=120,          # keep warm 2 min after last call
+    scaledown_window=600,          # keep warm 10 min after last call (was 2 min)
     secrets=[secret],
     min_containers=0,              # scale to zero when idle (free)
 )
@@ -197,6 +197,13 @@ class Perch:
         return np.stack(windows, axis=0).astype(np.float32)
 
     # ----- HTTP endpoint -----
+
+    @modal.fastapi_endpoint(method="GET", docs=False)
+    def warmup(self):
+        """Lightweight ping — by the time this returns 200, the container is
+        warm and `@modal.enter()` has finished, so the next `predict` call
+        runs at full speed (no cold-start tax)."""
+        return {"ok": True, "warm": True, "ready_classes": len(self.sci_names)}
 
     @modal.fastapi_endpoint(method="POST", docs=False)
     def predict(self, payload: dict):
