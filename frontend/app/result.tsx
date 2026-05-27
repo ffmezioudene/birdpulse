@@ -14,14 +14,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { useAudioPlayer } from 'expo-audio';
-
+import { setAudioModeAsync } from 'expo-audio';
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
-import { IdentifyResult, fetchXenoCanto } from '@/src/lib/api';
+import { IdentifyResult } from '@/src/lib/api';
 import { addHistory, addSighting, toggleFavorite } from '@/src/lib/state';
 import { SEED_BIRDS } from '@/src/lib/birds';
 import { FeatherWave } from '@/src/components/FeatherWave';
 import { PolaroidCard } from '@/src/components/PolaroidCard';
+import { BirdCallPlayer } from '@/src/components/BirdCallPlayer';
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -34,10 +34,7 @@ export default function Result() {
   const [saved, setSaved] = useState(false);
   const [logged, setLogged] = useState(false);
   const [displayedConf, setDisplayedConf] = useState(0);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [playing, setPlaying] = useState(false);
   const [dropped, setDropped] = useState(false);
-  const player = useAudioPlayer(null);
   const [wikiImage, setWikiImage] = useState<string | null>(null);
 
   // Fetch a real Wikipedia thumbnail for the identified species (Sound ID and
@@ -121,31 +118,25 @@ export default function Result() {
     return () => clearInterval(t);
   }, [data, detailOpacity, detailTranslateY]);
 
+  // Belt-and-suspenders audio-session restore. The Sound ID flow flips
+  // `allowsRecording: true` on iOS to record, and stopSoundRecording restores
+  // playback mode — but the navigation to /result can race that restore.
+  // Re-applying it here guarantees the BirdCallPlayer below can actually emit
+  // sound (including with the iPhone silent switch ON).
+  useEffect(() => {
+    setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
+  }, []);
+
   // Fetch bird call from xeno-canto and auto-play softly
   useEffect(() => {
     if (!data) return;
-    (async () => {
-      try {
-        const res = await fetchXenoCanto(data.commonName, 1);
-        const url = res.recordings?.[0]?.audio_url;
-        if (url) {
-          setAudioUrl(url);
-          // Auto-play softly after the develop lands
-          setTimeout(() => {
-            try {
-              player.replace({ uri: url });
-              player.volume = 0.6;
-              player.play();
-              setPlaying(true);
-            } catch {}
-          }, 1400);
-        }
-      } catch {}
-    })();
-    return () => {
-      try { player.pause(); } catch {}
-    };
-  }, [data, player]);
+    // NB: Active playback is delegated to <BirdCallPlayer/> below — it uses
+    // the same proven pipeline as the rest of the app (fetch xeno-canto +
+    // expo-audio `player.replace({uri})`). We dropped the inline player +
+    // auto-play here because the inline path was silently failing after a
+    // Sound ID recording (audio session restore race) and was a duplicate
+    // of the BirdCallPlayer logic that already works.
+  }, [data]);
 
   if (!data) {
     return (
@@ -197,14 +188,6 @@ export default function Result() {
       createdAt: new Date().toISOString(),
     });
     setLogged(true);
-  };
-
-  const togglePlay = () => {
-    Haptics.selectionAsync();
-    try {
-      if (playing) { player.pause(); setPlaying(false); }
-      else { if (audioUrl) { player.replace({ uri: audioUrl }); } player.play(); setPlaying(true); }
-    } catch {}
   };
 
   const onShare = async () => {
@@ -285,14 +268,14 @@ export default function Result() {
 
           {/* Play call control + actions */}
           <Animated.View style={{ opacity: detailOpacity, transform: [{ translateY: detailTranslateY }] }}>
-            {audioUrl && (
-              <TouchableOpacity onPress={togglePlay} style={styles.playPill} activeOpacity={0.85} testID="result-toggle-call">
-                <View style={styles.playPillIcon}>
-                  <Ionicons name={playing ? 'pause' : 'play'} size={14} color="#0E0F0D" />
-                </View>
-                <Text style={styles.playPillText}>{playing ? 'Pause call' : 'Play call'}</Text>
-                <FeatherWave size={18} mode={playing ? 'loading' : 'static'} />
-              </TouchableOpacity>
+            {!!data.scientificName && (
+              <View style={styles.playPillWrap} testID="result-toggle-call">
+                <BirdCallPlayer
+                  scientificName={data.scientificName}
+                  size="md"
+                  label="Play call"
+                />
+              </View>
             )}
 
             <View style={styles.actions}>
@@ -370,6 +353,18 @@ const styles = StyleSheet.create({
   identifiedText: { ...type.caption, color: colors.primary, fontWeight: '700' },
   confidence: { ...type.h1, color: colors.textPrimary, fontSize: 48, letterSpacing: -2 },
   eyebrow: { ...type.caption, color: colors.primary, letterSpacing: 1 },
+  playPillWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    marginTop: spacing.lg,
+  },
   playPill: {
     alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22,
