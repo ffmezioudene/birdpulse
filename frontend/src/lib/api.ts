@@ -144,9 +144,9 @@ export function warmupSoundPerch(): Promise<void> {
 import { lookupByScientific } from './catalog';
 
 const TIER_DESCRIPTIONS: Record<NonNullable<PerchResponse['tier']>, string> = {
-  high: 'Confident match from Google Perch 2.0 — listening to the call directly.',
-  medium: 'Best guess from Perch 2.0. The call is plausible but not crystal clear.',
-  low: 'Unclear recording — these are the closest matches Perch could find.',
+  high: 'Confident match from the recorded call.',
+  medium: 'Likely match. The call is plausible but not crystal clear.',
+  low: 'Unclear recording — here are the closest matches we could find.',
   uncertain: 'The audio is too quiet or noisy to identify confidently. Try again closer to the bird.',
 };
 
