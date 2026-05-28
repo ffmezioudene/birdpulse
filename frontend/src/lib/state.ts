@@ -1,11 +1,19 @@
-// Local app state utilities (free uses, history, favorites, sightings, collections, onboarding/paywall flags)
+// Local app state utilities (free counters, history, favorites, sightings, collections, onboarding/paywall flags)
 import { storage } from '@/src/utils/storage';
-import { FREE_USES_INITIAL as DEV_FREE_USES_INITIAL, getDevProUnlocked } from '@/src/lib/devmode';
+import {
+  FREE_IDENTIFICATIONS_INITIAL as DEV_FREE_IDS,
+  FREE_CHATS_INITIAL as DEV_FREE_CHATS,
+  getDevProUnlocked,
+} from '@/src/lib/devmode';
 
 export const KEYS = {
   onboardingDone: 'birdlens.onboarding.done',
   paywallSeen: 'birdlens.paywall.seen',
-  freeUsesRemaining: 'birdlens.free.uses',
+  // freemium v2 — separate ID & chat counters (never shown to user)
+  freeIdsRemaining: 'birdlens.free.ids',
+  freeChatsRemaining: 'birdlens.free.chats',
+  // legacy v1 counter — read only, migrated on first launch then ignored
+  freeUsesRemainingLegacy: 'birdlens.free.uses',
   isPro: 'birdlens.is.pro',
   history: 'birdlens.history',
   favorites: 'birdlens.favorites',
@@ -15,7 +23,8 @@ export const KEYS = {
   hasRated: 'birdlens.has.rated',
 };
 
-export const FREE_USES_INITIAL = DEV_FREE_USES_INITIAL;
+export const FREE_IDENTIFICATIONS_INITIAL = DEV_FREE_IDS;
+export const FREE_CHATS_INITIAL = DEV_FREE_CHATS;
 
 export type HistoryItem = {
   id: string;
@@ -59,17 +68,48 @@ export type Collection = {
   createdAt: string;
 };
 
-export async function getFreeUses(): Promise<number> {
-  const v = await storage.getItem<number>(KEYS.freeUsesRemaining, FREE_USES_INITIAL);
-  return v ?? FREE_USES_INITIAL;
+/**
+ * One-time migration from legacy single `freeUsesRemaining` counter to the
+ * split (IDs + chats) counters. Runs idempotently on every helper call —
+ * once the legacy key is cleared, this is a no-op.
+ */
+async function migrateLegacyCounter(): Promise<void> {
+  const legacy = await storage.getItem<number>(KEYS.freeUsesRemainingLegacy, -1);
+  if (legacy === undefined || legacy === null || legacy === -1) return;
+  // Erase the legacy key — we don't use it any more.
+  await storage.setItem(KEYS.freeUsesRemainingLegacy, -1);
 }
 
-export async function consumeFreeUse(): Promise<number> {
-  const cur = await getFreeUses();
+export async function getFreeIdentifications(): Promise<number> {
+  await migrateLegacyCounter();
+  const v = await storage.getItem<number>(KEYS.freeIdsRemaining, FREE_IDENTIFICATIONS_INITIAL);
+  return v ?? FREE_IDENTIFICATIONS_INITIAL;
+}
+
+export async function consumeFreeIdentification(): Promise<number> {
+  const cur = await getFreeIdentifications();
   const next = Math.max(0, cur - 1);
-  await storage.setItem(KEYS.freeUsesRemaining, next);
+  await storage.setItem(KEYS.freeIdsRemaining, next);
   return next;
 }
+
+export async function getFreeChats(): Promise<number> {
+  await migrateLegacyCounter();
+  const v = await storage.getItem<number>(KEYS.freeChatsRemaining, FREE_CHATS_INITIAL);
+  return v ?? FREE_CHATS_INITIAL;
+}
+
+export async function consumeFreeChat(): Promise<number> {
+  const cur = await getFreeChats();
+  const next = Math.max(0, cur - 1);
+  await storage.setItem(KEYS.freeChatsRemaining, next);
+  return next;
+}
+
+// --- Back-compat shims so existing call-sites keep working ---------------
+// The identify flow used `getFreeUses` / `consumeFreeUse` referring to IDs.
+export const getFreeUses = getFreeIdentifications;
+export const consumeFreeUse = consumeFreeIdentification;
 
 export async function isPro(): Promise<boolean> {
   return !!(await storage.getItem<boolean>(KEYS.isPro, false));
@@ -87,11 +127,17 @@ export async function setPro(v: boolean): Promise<void> {
   await storage.setItem(KEYS.isPro, v);
 }
 
-/** Reset the free-use counter back to the initial value. */
-export async function resetFreeUses(): Promise<number> {
-  await storage.setItem(KEYS.freeUsesRemaining, FREE_USES_INITIAL);
-  return FREE_USES_INITIAL;
+/** Reset both free-counter buckets back to their initial values. */
+export async function resetFreeLimits(): Promise<{ ids: number; chats: number }> {
+  await storage.setItem(KEYS.freeIdsRemaining, FREE_IDENTIFICATIONS_INITIAL);
+  await storage.setItem(KEYS.freeChatsRemaining, FREE_CHATS_INITIAL);
+  return { ids: FREE_IDENTIFICATIONS_INITIAL, chats: FREE_CHATS_INITIAL };
 }
+// Back-compat alias
+export const resetFreeUses = async () => {
+  const r = await resetFreeLimits();
+  return r.ids;
+};
 
 export async function getHistory(): Promise<HistoryItem[]> {
   const raw = await storage.getItem<string>('birdlens.history.json', '');

@@ -15,7 +15,7 @@ import * as Haptics from 'expo-haptics';
 
 import { PAYWALL_BG } from '@/src/lib/birds';
 import { storage } from '@/src/utils/storage';
-import { KEYS, FREE_USES_INITIAL, setPro, getFreeUses, isProEffective } from '@/src/lib/state';
+import { KEYS, setPro, isProEffective } from '@/src/lib/state';
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
 
 const { height: SCREEN_H } = Dimensions.get('window');
@@ -31,7 +31,6 @@ const BENEFITS = [
 export default function Paywall() {
   const router = useRouter();
   const [plan, setPlan] = useState<'yearly' | 'weekly'>('yearly');
-  const [freeUses, setFreeUses] = useState<number>(FREE_USES_INITIAL);
 
   useEffect(() => {
     // If user is already Pro (real subscription OR dev Unlock-Pro toggle), skip the paywall entirely.
@@ -40,12 +39,9 @@ export default function Paywall() {
         router.replace('/(tabs)');
         return;
       }
-      setFreeUses(await getFreeUses());
       storage.setItem(KEYS.paywallSeen, true);
     })();
   }, [router]);
-
-  const canSkip = freeUses > 0;
 
   const subscribe = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -76,18 +72,12 @@ export default function Paywall() {
       </ImageBackground>
 
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        {/* Top row */}
+        {/* Top row — close (X) on the left, nothing else. We never display a
+            free-use counter to the user; gating is silent. */}
         <View style={styles.topRow}>
-          {canSkip ? (
-            <TouchableOpacity style={styles.closeBtn} onPress={skip} testID="paywall-close-button">
-              <Ionicons name="close" size={18} color="rgba(255,255,255,0.6)" />
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.closeBtn} />
-          )}
-          <Text style={styles.smallNote}>
-            {canSkip ? `${freeUses} free uses left` : 'Upgrade to continue'}
-          </Text>
+          <TouchableOpacity style={styles.closeBtn} onPress={skip} testID="paywall-close-button">
+            <Ionicons name="close" size={18} color="rgba(255,255,255,0.85)" />
+          </TouchableOpacity>
           <View style={styles.closeBtn} />
         </View>
 

@@ -219,13 +219,23 @@ export default function NatureJournal() {
             {collections.length === 0 ? (
               <EmptyState title="No collections yet" subtitle="Group your finds into named collections." />
             ) : collections.map((c) => (
-              <View key={c.id} style={styles.collCard} testID={`collection-${c.id}`}>
+              <TouchableOpacity
+                key={c.id}
+                activeOpacity={0.85}
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  router.push(`/collection/${c.id}` as any);
+                }}
+                style={styles.collCard}
+                testID={`collection-${c.id}`}
+              >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <Ionicons name="bookmark" size={18} color={colors.primary} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.tName}>{c.name}</Text>
                     <Text style={styles.tMeta}>{c.birds.length} {c.birds.length === 1 ? 'bird' : 'birds'}</Text>
                   </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
                 </View>
                 {c.birds.length > 0 && (
                   <ScrollView
@@ -234,17 +244,7 @@ export default function NatureJournal() {
                     contentContainerStyle={{ gap: 8, paddingTop: 10 }}
                   >
                     {c.birds.slice(0, 8).map((b) => (
-                      <TouchableOpacity
-                        key={b.id}
-                        onPress={() => {
-                          // Only navigate when we know the bird is in our catalog;
-                          // otherwise we'd land on a 404 detail page.
-                          const known = SEED_BIRDS.some((s) => s.id === b.id);
-                          if (known) router.push(`/bird/${b.id}` as any);
-                        }}
-                        style={styles.collBird}
-                        testID={`collection-bird-${b.id}`}
-                      >
+                      <View key={b.id} style={styles.collBird}>
                         {b.image ? (
                           <Image source={{ uri: b.image }} style={styles.collBirdImg} />
                         ) : (
@@ -253,11 +253,11 @@ export default function NatureJournal() {
                           </View>
                         )}
                         <Text style={styles.collBirdName} numberOfLines={1}>{b.commonName}</Text>
-                      </TouchableOpacity>
+                      </View>
                     ))}
                   </ScrollView>
                 )}
-              </View>
+              </TouchableOpacity>
             ))}
           </ScrollView>
         )}

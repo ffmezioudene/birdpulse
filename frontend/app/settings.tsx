@@ -5,19 +5,17 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, type, spacing, radii } from '@/src/theme';
-import { isProEffective, getFreeUses, resetFreeUses, FREE_USES_INITIAL } from '@/src/lib/state';
+import { isProEffective, resetFreeLimits } from '@/src/lib/state';
 import { IS_DEV_MODE, getDevProUnlocked, setDevProUnlocked } from '@/src/lib/devmode';
 
 export default function Settings() {
   const router = useRouter();
   const [pro, setProState] = useState(false);
   const [devPro, setDevProState] = useState(false);
-  const [freeUses, setFreeUses] = useState<number>(FREE_USES_INITIAL);
 
   const refresh = async () => {
     setProState(await isProEffective());
     setDevProState(await getDevProUnlocked());
-    setFreeUses(await getFreeUses());
   };
 
   useEffect(() => {
@@ -30,10 +28,12 @@ export default function Settings() {
     await refresh();
   };
 
-  const onResetFreeUses = async () => {
-    const next = await resetFreeUses();
-    setFreeUses(next);
-    Alert.alert('Free uses reset', `Counter is back to ${next}. The paywall will trigger again on attempt ${next + 1}.`);
+  const onResetLimits = async () => {
+    const r = await resetFreeLimits();
+    Alert.alert(
+      'Free limits reset',
+      `Identifications: ${r.ids} · Chats: ${r.chats}. The paywall will trigger again once these are exhausted.`,
+    );
   };
 
   return (
@@ -102,19 +102,20 @@ export default function Settings() {
                   onChange={toggleDevPro}
                   testID="dev-unlock-pro-toggle"
                 />
-                <TouchableOpacity style={styles.row} onPress={onResetFreeUses} testID="dev-reset-free-uses">
+                <TouchableOpacity style={styles.row} onPress={onResetLimits} testID="dev-reset-free-uses">
                   <View style={styles.rowIcon}>
                     <Ionicons name="refresh-outline" size={18} color={colors.secondary} />
                   </View>
-                  <Text style={styles.rowLabel}>Reset Free Uses (Testing)</Text>
+                  <Text style={styles.rowLabel}>Reset Free Limits (Testing)</Text>
                   <View style={{ flex: 1 }} />
-                  <Text style={styles.rowRight}>{freeUses} left</Text>
                   <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
               </View>
               <Text style={styles.devNote}>
-                Single-file flag in <Text style={{ color: colors.secondary, fontWeight: '700' }}>src/lib/devmode.ts</Text>.
-                Set IS_DEV_MODE=false (or delete this block) to ship clean.
+                Auto-hidden in production builds (gated by{' '}
+                <Text style={{ color: colors.secondary, fontWeight: '700' }}>__DEV__</Text>).
+                To strip entirely before ship, delete this block + {' '}
+                <Text style={{ color: colors.secondary, fontWeight: '700' }}>src/lib/devmode.ts</Text>.
               </Text>
             </View>
           )}

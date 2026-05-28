@@ -1,18 +1,27 @@
-// === DEVELOPER TOGGLES — REMOVE BEFORE PRODUCTION ============================
-// Everything in this file is dev-only. Set IS_DEV_MODE=false (or delete the file
-// and the Developer section in Settings + the OR-clause in isProEffective()) to
-// ship a clean production build.
+// === DEVELOPER TOGGLES =======================================================
+// Tied to React Native's built-in `__DEV__` flag:
+//   • Dev / Expo Go / EAS dev-client / EAS preview builds  → __DEV__ === true
+//   • EAS / store production builds                        → __DEV__ === false
+//
+// So the Developer section is automatically HIDDEN in production builds
+// shipped to real users, and the Unlock-Pro toggle never leaks out.
+//
+// To fully strip dev tooling later, delete this file + the Developer section
+// in /app/settings.tsx + the OR-clause in isProEffective() inside state.ts.
 // =============================================================================
 
 import { storage } from '@/src/utils/storage';
 
-export const IS_DEV_MODE = true;
+export const IS_DEV_MODE = __DEV__;
 
 // Storage key for the in-app "Unlock Pro (Testing)" toggle
 export const DEV_PRO_KEY = 'birdlens.dev.unlock_pro';
 
-// In dev we raise free uses from 2 → 20 so casual testing never hits the gate.
-export const FREE_USES_INITIAL = IS_DEV_MODE ? 20 : 2;
+// Freemium model: 3 free identifications + 3 free chats. Same in dev & prod —
+// no counters are surfaced to the user; gating is silent and triggers the
+// paywall when limits are hit.
+export const FREE_IDENTIFICATIONS_INITIAL = 3;
+export const FREE_CHATS_INITIAL = 3;
 
 export async function getDevProUnlocked(): Promise<boolean> {
   if (!IS_DEV_MODE) return false;

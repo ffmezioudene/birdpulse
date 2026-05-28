@@ -73,6 +73,7 @@ export default function RootLayout() {
           <Stack.Screen name="settings" />
           <Stack.Screen name="hotspots" />
           <Stack.Screen name="bird/[id]" />
+          <Stack.Screen name="collection/[id]" />
           <Stack.Screen name="birds-near-you" />
           <Stack.Screen name="popular-birds" />
           <Stack.Screen name="category/[id]" />

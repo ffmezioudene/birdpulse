@@ -21,7 +21,7 @@ import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import { OWL_AVATAR } from '@/src/lib/birds';
 import { chat } from '@/src/lib/api';
 import { storage } from '@/src/utils/storage';
-import { KEYS, getHistory } from '@/src/lib/state';
+import { KEYS, getHistory, isProEffective, getFreeChats, consumeFreeChat } from '@/src/lib/state';
 import { FeatherWave } from '@/src/components/FeatherWave';
 
 type Msg = { id: string; role: 'user' | 'assistant'; content: string };
@@ -88,6 +88,14 @@ export default function ChatScreen() {
   const send = async (text?: string) => {
     const content = (text ?? input).trim();
     if (!content) return;
+    // Silent freemium gating — 3 free chats, then paywall. No user-facing counter.
+    if (!(await isProEffective())) {
+      const left = await getFreeChats();
+      if (left <= 0) {
+        router.replace('/paywall');
+        return;
+      }
+    }
     Haptics.selectionAsync();
     setInput('');
     const userMsg: Msg = { id: `u-${Date.now()}`, role: 'user', content };
@@ -109,6 +117,10 @@ export default function ChatScreen() {
         await storage.setItem(KEYS.chatSession, res.session_id);
       }
       setMessages((m) => [...m, { id: `a-${Date.now()}`, role: 'assistant', content: res.reply }]);
+      // Only consume a chat-credit once we got a real reply, so failures don't burn quota.
+      if (!(await isProEffective())) {
+        await consumeFreeChat();
+      }
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (e: any) {
       setMessages((m) => [
