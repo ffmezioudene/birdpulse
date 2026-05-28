@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "BirdLens",
-    "slug": "birdlens",
+    "name": "BirdPulse",
+    "slug": "birdpulse",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "birdlens",
+    "scheme": "birdpulse",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {

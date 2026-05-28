@@ -1,4 +1,4 @@
-// BirdLens catalog — wraps the 11,145-species index for instant in-memory search
+// BirdPulse catalog — wraps the 11,145-species index for instant in-memory search
 // and category filtering. Loaded lazily on first use, then kept in memory.
 import speciesIndex from '@/src/data/species-index.json';
 import precachedBirds from '@/src/data/precached-birds.json';

@@ -1,4 +1,4 @@
-// Universal press feedback for BirdLens — animated spring scale + selection haptic.
+// Universal press feedback for BirdPulse — animated spring scale + selection haptic.
 // Use this in place of TouchableOpacity for any tappable card on Home and sub-pages.
 import { ReactNode } from 'react';
 import { Pressable, ViewStyle, StyleProp, GestureResponderEvent } from 'react-native';

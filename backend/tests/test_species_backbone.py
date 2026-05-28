@@ -1,4 +1,4 @@
-"""Backend tests for the BirdLens Species Data Backbone upgrade.
+"""Backend tests for the BirdPulse Species Data Backbone upgrade.
 
 New endpoints:
   - GET  /api/wiki/summary?title=<binomial_or_common>

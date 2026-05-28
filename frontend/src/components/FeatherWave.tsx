@@ -1,4 +1,4 @@
-// FeatherWave — BirdLens signature brand motif.
+// FeatherWave — BirdPulse signature brand motif.
 // A vertical "feather spine" with audio-waveform barbs. Reads as feather + soundwave.
 // Three modes: static | loading (rippling) | success (spring-up flourish).
 import { useEffect, useMemo, useRef } from 'react';

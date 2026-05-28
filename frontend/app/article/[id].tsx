@@ -24,7 +24,7 @@ export default function ArticleReader() {
     if (!article) return;
     Haptics.selectionAsync();
     try {
-      await Share.share({ message: `${article.title} — ${article.subtitle} · via BirdLens` });
+      await Share.share({ message: `${article.title} — ${article.subtitle} · via BirdPulse` });
     } catch {}
   };
 
@@ -74,7 +74,7 @@ export default function ArticleReader() {
 
           <View style={styles.signature}>
             <FeatherWave size={28} mode="static" />
-            <Text style={styles.signatureText}>BirdLens · Field Guide</Text>
+            <Text style={styles.signatureText}>BirdPulse · Field Guide</Text>
           </View>
 
           {related.length > 0 && (

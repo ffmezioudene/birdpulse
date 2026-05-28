@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the BirdLens pre-cached bird detail bundle (~500 most common species).
+"""Build the BirdPulse pre-cached bird detail bundle (~500 most common species).
 
 For each bird:
   1. Wikipedia REST /api/rest_v1/page/summary/{title} → description + thumb + image
@@ -38,7 +38,7 @@ TARGET = int(os.environ.get("PRECACHE_TARGET", "500"))
 
 WP_BASE = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 WP_EXTRACT = "https://en.wikipedia.org/w/api.php"
-UA = "BirdLensApp/1.0 (https://birdlens.app; contact@birdlens.app) python-requests"
+UA = "BirdPulseApp/1.0 (https://birdpulse.app; contact@birdpulse.app) python-requests"
 
 # Curated "famous worldwide" species — guaranteed to be precached
 FAMOUS = [

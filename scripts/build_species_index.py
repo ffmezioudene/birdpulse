@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the BirdLens species index from the eBird/Clements 2024 taxonomy.
+"""Build the BirdPulse species index from the eBird/Clements 2024 taxonomy.
 
 Output: /app/frontend/src/data/species-index.json
 Shape: [{"id":"northern-cardinal","c":"Northern Cardinal","s":"Cardinalis cardinalis","f":"Cardinalidae","o":"Passeriformes","g":"Cardinals & Allies"}]

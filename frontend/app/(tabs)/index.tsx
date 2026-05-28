@@ -1,4 +1,4 @@
-// Home — the BirdLens cinematic landing.
+// Home — the BirdPulse cinematic landing.
 //
 // Order (the value, then the content):
 //   1) Header (settings • wordmark • Pro)
@@ -120,7 +120,7 @@ export default function Home() {
             </PressableScale>
             <View style={styles.brand}>
               <View style={styles.brandDot} />
-              <Text style={styles.brandText}>BirdLens</Text>
+              <Text style={styles.brandText}>BirdPulse</Text>
             </View>
             {pro ? (
               <View style={[styles.iconBtn, { backgroundColor: 'rgba(224,164,88,0.18)' }]}>

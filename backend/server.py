@@ -57,7 +57,7 @@ VISION_MODEL_NAME = "gpt-4o"
 CHAT_MODEL_PROVIDER = "openai"
 CHAT_MODEL_NAME = "gpt-4o"
 
-app = FastAPI(title="BirdLens API")
+app = FastAPI(title="BirdPulse API")
 api_router = APIRouter(prefix="/api")
 
 
@@ -207,7 +207,7 @@ IDENTIFY_SYSTEM_PROMPT = (
 )
 
 OWL_SYSTEM_PROMPT = (
-    "You are BirdLens's expert birding companion — a warm, knowledgeable ornithologist. "
+    "You are BirdPulse's expert birding companion — a warm, knowledgeable ornithologist. "
     "Help users identify birds from descriptions, explain bird behavior and calls, advise how to attract specific birds, "
     "suggest the best times and places to birdwatch, and answer any nature question. "
     "Be concise (under 130 words unless asked for depth), friendly, and genuinely helpful. "
@@ -243,7 +243,7 @@ def _extract_json(text: str) -> Dict[str, Any]:
 
 @api_router.get("/")
 async def root():
-    return {"status": "ok", "service": "BirdLens API"}
+    return {"status": "ok", "service": "BirdPulse API"}
 
 
 @api_router.get("/health")
@@ -575,7 +575,7 @@ async def identify_sound_gemini_from_url(req: GeminiSoundFromUrlRequest):
     mime = (req.mime_type or _AUDIO_MIME_BY_EXT.get(guessed_ext, "audio/mp3")).lower()
 
     headers = {
-        "User-Agent": "BirdLensApp/1.0 (https://birdlens.app; contact@birdlens.app)",
+        "User-Agent": "BirdPulseApp/1.0 (https://birdpulse.app; contact@birdpulse.app)",
     }
     try:
         async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as http:
@@ -714,7 +714,7 @@ async def identify_sound_perch_from_url(req: PerchSoundFromUrlRequest):
     if not req.audio_url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="audio_url must be http(s)")
 
-    headers = {"User-Agent": "BirdLensApp/1.0 (https://birdlens.app)"}
+    headers = {"User-Agent": "BirdPulseApp/1.0 (https://birdpulse.app)"}
     try:
         async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as http:
             r = await http.get(req.audio_url)
@@ -895,7 +895,7 @@ async def bulk_thumbs(payload: dict):
     common_map = {it.get("common", "").strip(): it.get("id") for it in items if it.get("common")}
 
     headers = {
-        "User-Agent": "BirdLensApp/1.0 (https://birdlens.app; contact@birdlens.app)",
+        "User-Agent": "BirdPulseApp/1.0 (https://birdpulse.app; contact@birdpulse.app)",
         "Accept": "application/json",
     }
 
@@ -1007,9 +1007,9 @@ async def wiki_summary(title: str):
         candidates = parts
 
     headers = {
-        "User-Agent": "BirdLensApp/1.0 (https://birdlens.app; contact@birdlens.app) python-httpx",
+        "User-Agent": "BirdPulseApp/1.0 (https://birdpulse.app; contact@birdpulse.app) python-httpx",
         "Accept": "application/json",
-        "Api-User-Agent": "BirdLensApp/1.0 (contact@birdlens.app)",
+        "Api-User-Agent": "BirdPulseApp/1.0 (contact@birdpulse.app)",
     }
     async with httpx.AsyncClient(timeout=12, headers=headers, follow_redirects=True) as http:
         for t in candidates:

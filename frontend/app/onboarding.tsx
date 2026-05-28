@@ -55,7 +55,7 @@ const SLIDES: Slide[] = [
   },
   {
     image: ONBOARDING_IMAGES[4],
-    eyebrow: 'BIRDLENS PRO',
+    eyebrow: 'BIRDPULSE PRO',
     title: 'Loved by birders\nworldwide.',
     subtitle: 'Start your journey today.',
   },
@@ -138,7 +138,7 @@ function SlideView({ slide }: { slide: Slide }) {
       <SafeAreaView style={styles.slideInner} edges={['top']}>
         <View style={styles.brand}>
           <View style={styles.brandDot} />
-          <Text style={styles.brandText}>BirdLens</Text>
+          <Text style={styles.brandText}>BirdPulse</Text>
         </View>
         <View style={styles.copy}>
           <Text style={styles.eyebrow}>{slide.eyebrow}</Text>

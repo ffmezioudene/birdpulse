@@ -207,7 +207,7 @@ export default function Result() {
   const onShare = async () => {
     Haptics.selectionAsync();
     try {
-      await Share.share({ message: `I just spotted a ${data.commonName} (${data.scientificName}) on BirdLens.` });
+      await Share.share({ message: `I just spotted a ${data.commonName} (${data.scientificName}) on BirdPulse.` });
     } catch {}
   };
 

@@ -1,4 +1,4 @@
-// API client for BirdLens backend
+// API client for BirdPulse backend
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
 export type IdentifyResult = {

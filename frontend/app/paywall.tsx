@@ -98,7 +98,7 @@ export default function Paywall() {
             <View style={styles.titleRow}>
               <Text style={styles.laurel}>❦</Text>
               <View style={{ alignItems: 'center' }}>
-                <Text style={styles.eyebrow}>BIRDLENS PRO</Text>
+                <Text style={styles.eyebrow}>BIRDPULSE PRO</Text>
                 <Text style={styles.title}>#1 Bird Identifier</Text>
               </View>
               <Text style={styles.laurel}>❦</Text>

@@ -157,14 +157,14 @@ export default function Identify() {
       if (perm.canAskAgain === false) {
         Alert.alert(
           'Microphone access needed',
-          'Enable microphone in Settings so BirdLens can listen to bird calls.',
+          'Enable microphone in Settings so BirdPulse can listen to bird calls.',
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Open Settings', onPress: () => Linking.openSettings() },
           ],
         );
       } else {
-        Alert.alert('Microphone access needed', 'BirdLens uses the microphone to listen to bird calls.');
+        Alert.alert('Microphone access needed', 'BirdPulse uses the microphone to listen to bird calls.');
       }
       return;
     }

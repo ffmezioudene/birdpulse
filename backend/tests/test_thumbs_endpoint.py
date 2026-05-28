@@ -146,7 +146,7 @@ class TestThumbsEdge:
             url,
             timeout=10,
             allow_redirects=True,
-            headers={"User-Agent": "BirdLensApp/1.0 (https://birdlens.app; contact@birdlens.app)"},
+            headers={"User-Agent": "BirdPulseApp/1.0 (https://birdpulse.app; contact@birdpulse.app)"},
         )
         assert head.status_code == 200, f"status={head.status_code}"
         ctype = head.headers.get("Content-Type", "")

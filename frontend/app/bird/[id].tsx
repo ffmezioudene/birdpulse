@@ -181,7 +181,7 @@ export default function BirdDetail() {
   const onShare = () => {
     Share.share({
       title: detail.commonName,
-      message: `Check out the ${detail.commonName} (${detail.scientificName}) on BirdLens`,
+      message: `Check out the ${detail.commonName} (${detail.scientificName}) on BirdPulse`,
     });
   };
 

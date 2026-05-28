@@ -54,7 +54,7 @@ export default function Settings() {
             testID="settings-premium"
           >
             <View style={{ flex: 1 }}>
-              <Text style={styles.premEyebrow}>BIRDLENS</Text>
+              <Text style={styles.premEyebrow}>BIRDPULSE</Text>
               <Text style={styles.premTitle}>{pro ? 'Pro Member' : 'Upgrade to Pro'}</Text>
               <Text style={styles.premSub}>
                 {pro ? 'You have unlimited identifications.' : 'Unlimited IDs, deep insights, expert maps.'}

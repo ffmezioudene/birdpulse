@@ -1,7 +1,7 @@
-# BirdLens — Premium Bird Identifier App
+# BirdPulse — Premium Bird Identifier App
 
 ## Overview
-BirdLens is a premium iOS-style bird identification app built with React Native + Expo (frontend) and FastAPI + MongoDB (backend). It pairs cinematic dark UI with real nature photography and AI-powered identification to deliver an Apple Design Award–quality experience.
+BirdPulse is a premium iOS-style bird identification app built with React Native + Expo (frontend) and FastAPI + MongoDB (backend). It pairs cinematic dark UI with real nature photography and AI-powered identification to deliver an Apple Design Award–quality experience.
 
 ## Tech Stack
 - Frontend: React Native, Expo Router, Expo SDK 54, expo-camera, expo-image-picker, expo-audio, expo-location, react-native-maps, expo-blur, expo-linear-gradient, @expo/vector-icons, expo-haptics

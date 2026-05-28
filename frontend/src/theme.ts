@@ -1,5 +1,5 @@
 // =============================================================================
-// BirdLens DESIGN SYSTEM — ONE source of truth, consumed everywhere.
+// BirdPulse DESIGN SYSTEM — ONE source of truth, consumed everywhere.
 // Inspired by Spotify/Netflix immersion + Linear precision.
 // Do not introduce magic numbers in screens — extend tokens here instead.
 // =============================================================================
