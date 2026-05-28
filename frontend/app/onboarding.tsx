@@ -56,7 +56,7 @@ const SLIDES: Slide[] = [
   {
     image: ONBOARDING_IMAGES[4],
     eyebrow: 'BIRDPULSE PRO',
-    title: 'Loved by birders\nworldwide.',
+    title: 'Your complete\nbirding companion.',
     subtitle: 'Start your journey today.',
   },
 ];

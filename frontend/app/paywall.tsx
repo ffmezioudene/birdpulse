@@ -72,13 +72,18 @@ export default function Paywall() {
       </ImageBackground>
 
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        {/* Top row — close (X) on the left, nothing else. We never display a
-            free-use counter to the user; gating is silent. */}
+        {/* Top row — single close (X) button, neatly anchored to the top-left.
+            Matches the iconBtn pattern used on detail / settings screens. */}
         <View style={styles.topRow}>
-          <TouchableOpacity style={styles.closeBtn} onPress={skip} testID="paywall-close-button">
-            <Ionicons name="close" size={18} color="rgba(255,255,255,0.85)" />
+          <TouchableOpacity
+            style={styles.closeBtn}
+            onPress={skip}
+            testID="paywall-close-button"
+            hitSlop={10}
+            accessibilityLabel="Close"
+          >
+            <Ionicons name="close" size={20} color={colors.textPrimary} />
           </TouchableOpacity>
-          <View style={styles.closeBtn} />
         </View>
 
         {/* Flexible content area */}
@@ -89,7 +94,7 @@ export default function Paywall() {
               <Text style={styles.laurel}>❦</Text>
               <View style={{ alignItems: 'center' }}>
                 <Text style={styles.eyebrow}>BIRDPULSE PRO</Text>
-                <Text style={styles.title}>#1 Bird Identifier</Text>
+                <Text style={styles.title}>Your birding companion</Text>
               </View>
               <Text style={styles.laurel}>❦</Text>
             </View>
@@ -205,20 +210,21 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   topRow: {
     paddingHorizontal: H_PAD,
-    paddingTop: 6,
+    paddingTop: spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
   },
   closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.hairline,
   },
-  smallNote: { ...type.caption, color: 'rgba(255,255,255,0.85)' },
   content: {
     flex: 1,
     paddingHorizontal: H_PAD,
