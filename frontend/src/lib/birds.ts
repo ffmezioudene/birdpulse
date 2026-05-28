@@ -331,4 +331,4 @@ export const PAYWALL_BG =
   'https://images.pexels.com/photos/29082522/pexels-photo-29082522.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=1400&w=900';
 
 export const OWL_AVATAR =
-  'https://images.unsplash.com/photo-1720210534279-ac8c50a53e82?crop=entropy&cs=srgb&fm=jpg&q=85&w=400';
+  'https://customer-assets.emergentagent.com/job_birdscan-pro/artifacts/5lkugvxg_image.png';
