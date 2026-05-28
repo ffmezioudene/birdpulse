@@ -15,6 +15,7 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 
 import { useIconFonts } from '@/src/hooks/use-icon-fonts';
+import { RevenueCatProvider } from '@/src/providers/RevenueCatProvider';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -55,30 +56,32 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#0A0B0A' }}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: '#0A0B0A' },
-            animation: 'fade',
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="onboarding" />
-          <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="identify" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="result" />
-          <Stack.Screen name="chat" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="settings" />
-          <Stack.Screen name="hotspots" />
-          <Stack.Screen name="bird/[id]" />
-          <Stack.Screen name="collection/[id]" />
-          <Stack.Screen name="birds-near-you" />
-          <Stack.Screen name="popular-birds" />
-          <Stack.Screen name="category/[id]" />
-          <Stack.Screen name="article/[id]" />
-        </Stack>
+        <RevenueCatProvider>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: '#0A0B0A' },
+              animation: 'fade',
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="onboarding" />
+            <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="identify" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="result" />
+            <Stack.Screen name="chat" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="settings" />
+            <Stack.Screen name="hotspots" />
+            <Stack.Screen name="bird/[id]" />
+            <Stack.Screen name="collection/[id]" />
+            <Stack.Screen name="birds-near-you" />
+            <Stack.Screen name="popular-birds" />
+            <Stack.Screen name="category/[id]" />
+            <Stack.Screen name="article/[id]" />
+          </Stack>
+        </RevenueCatProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

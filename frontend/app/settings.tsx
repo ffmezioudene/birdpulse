@@ -7,11 +7,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, type, spacing, radii } from '@/src/theme';
 import { isProEffective, resetFreeLimits } from '@/src/lib/state';
 import { IS_DEV_MODE, getDevProUnlocked, setDevProUnlocked } from '@/src/lib/devmode';
+import { useRevenueCat } from '@/src/providers/RevenueCatProvider';
+import { IS_RC_AVAILABLE } from '@/src/lib/revenuecat';
 
 export default function Settings() {
   const router = useRouter();
+  const rc = useRevenueCat();
   const [pro, setProState] = useState(false);
   const [devPro, setDevProState] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const refresh = async () => {
     setProState(await isProEffective());
@@ -20,7 +24,7 @@ export default function Settings() {
 
   useEffect(() => {
     refresh();
-  }, []);
+  }, [rc.isPro]);
 
   const toggleDevPro = async (v: boolean) => {
     setDevProState(v);
@@ -34,6 +38,43 @@ export default function Settings() {
       'Free limits reset',
       `Identifications: ${r.ids} · Chats: ${r.chats}. The paywall will trigger again once these are exhausted.`,
     );
+  };
+
+  const onManageSubscription = async () => {
+    if (!IS_RC_AVAILABLE) {
+      Alert.alert(
+        'Mobile-only',
+        'Subscription management is available in the iOS and Android app.',
+      );
+      return;
+    }
+    await rc.openCustomerCenter();
+  };
+
+  const onRestore = async () => {
+    if (!IS_RC_AVAILABLE) {
+      Alert.alert(
+        'Mobile-only',
+        'Purchase restoration is available in the iOS and Android app.',
+      );
+      return;
+    }
+    setRestoring(true);
+    try {
+      const { ok, isPro: nowPro } = await rc.restore();
+      if (nowPro) {
+        Alert.alert('Restored', 'Your BirdPulse Pro subscription is active.');
+      } else if (ok) {
+        Alert.alert(
+          'Nothing to restore',
+          'We couldn’t find an active BirdPulse Pro subscription on this store account.',
+        );
+      } else {
+        Alert.alert('Unable to restore', 'Please try again later.');
+      }
+    } finally {
+      setRestoring(false);
+    }
   };
 
   return (
@@ -62,6 +103,21 @@ export default function Settings() {
             </View>
             <Ionicons name={pro ? 'star' : 'arrow-forward'} size={22} color={colors.secondary} />
           </TouchableOpacity>
+
+          <Section title="Subscription">
+            <Row
+              icon="card-outline"
+              label="Manage Subscription"
+              onPress={onManageSubscription}
+              testID="settings-manage-subscription"
+            />
+            <Row
+              icon="refresh-outline"
+              label={restoring ? 'Restoring…' : 'Restore Purchases'}
+              onPress={onRestore}
+              testID="settings-restore-purchases"
+            />
+          </Section>
 
           <Section title="Support">
             <Row icon="help-circle-outline" label="FAQ & Help" onPress={() => {}} />

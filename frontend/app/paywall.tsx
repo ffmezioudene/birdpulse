@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   ImageBackground,
   TouchableOpacity,
   Dimensions,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +19,14 @@ import { PAYWALL_BG } from '@/src/lib/birds';
 import { storage } from '@/src/utils/storage';
 import { KEYS, setPro, isProEffective } from '@/src/lib/state';
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
+import { useRevenueCat } from '@/src/providers/RevenueCatProvider';
+import {
+  IS_RC_AVAILABLE,
+  PaywallResult,
+  getCurrentOffering,
+  purchasePackage,
+} from '@/src/lib/revenuecat';
+import type { PurchasesPackage } from 'react-native-purchases';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 const COMPACT = SCREEN_H < 720; // iPhone SE / 13 mini territory
@@ -30,7 +40,25 @@ const BENEFITS = [
 
 export default function Paywall() {
   const router = useRouter();
+  const rc = useRevenueCat();
   const [plan, setPlan] = useState<'yearly' | 'weekly'>('yearly');
+  const [busy, setBusy] = useState(false);
+
+  // Live offering packages from RevenueCat (or null on web / failure).
+  const [weeklyPkg, setWeeklyPkg] = useState<PurchasesPackage | null>(null);
+  const [annualPkg, setAnnualPkg] = useState<PurchasesPackage | null>(null);
+  const triedHostedRef = useRef(false);
+
+  // Load packages for the fallback UI so the displayed prices match the store.
+  useEffect(() => {
+    if (!IS_RC_AVAILABLE || !rc.initialized) return;
+    (async () => {
+      const off = await getCurrentOffering();
+      if (!off) return;
+      setWeeklyPkg(off.weekly ?? off.availablePackages.find((p) => /week/i.test(p.identifier)) ?? null);
+      setAnnualPkg(off.annual ?? off.availablePackages.find((p) => /annual|year/i.test(p.identifier)) ?? null);
+    })();
+  }, [rc.initialized]);
 
   useEffect(() => {
     // If user is already Pro (real subscription OR dev Unlock-Pro toggle), skip the paywall entirely.
@@ -40,13 +68,82 @@ export default function Paywall() {
         return;
       }
       storage.setItem(KEYS.paywallSeen, true);
+
+      // Try the RevenueCat-hosted paywall once per mount on native.
+      // On web (or if presentation isn't available) we silently keep the
+      // custom fallback UI visible.
+      if (!IS_RC_AVAILABLE || triedHostedRef.current || !rc.initialized) return;
+      triedHostedRef.current = true;
+      try {
+        const res = await rc.presentPaywallIfNeeded();
+        if (res === PaywallResult.Purchased || res === PaywallResult.Restored) {
+          router.replace('/(tabs)');
+        }
+        // CANCELLED / NOT_PRESENTED / ERROR → stay on the custom fallback UI.
+      } catch {}
     })();
-  }, [router]);
+  }, [router, rc.initialized]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const subscribe = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await setPro(true);
-    router.replace('/(tabs)');
+    if (busy) return;
+    Haptics.selectionAsync().catch(() => {});
+
+    const chosenPkg = plan === 'yearly' ? annualPkg : weeklyPkg;
+
+    // Native + we have a live package → real RevenueCat purchase.
+    if (IS_RC_AVAILABLE && chosenPkg) {
+      setBusy(true);
+      try {
+        const outcome = await purchasePackage(chosenPkg);
+        if (outcome.kind === 'purchased') {
+          await rc.refresh();
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          router.replace('/(tabs)');
+        } else if (outcome.kind === 'error') {
+          Alert.alert('Purchase failed', outcome.message);
+        }
+        // 'cancelled' — user backed out, do nothing.
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // Web preview / no packages loaded → behave as before so the rest of the
+    // app stays testable. (Real purchases require a native dev/prod build.)
+    if (__DEV__) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      await setPro(true);
+      router.replace('/(tabs)');
+      return;
+    }
+
+    Alert.alert(
+      'Subscriptions unavailable',
+      'In-app purchases require the BirdPulse mobile app. Please try again in the iOS or Android app.',
+    );
+  };
+
+  const onRestore = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { ok, isPro: nowPro } = await rc.restore();
+      if (nowPro) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert('Restored', 'Your BirdPulse Pro subscription is active again.');
+        router.replace('/(tabs)');
+      } else if (ok) {
+        Alert.alert(
+          'Nothing to restore',
+          'We couldn’t find an active BirdPulse Pro subscription on this account.',
+        );
+      } else {
+        Alert.alert('Restore unavailable', 'Restore is only available in the mobile app.');
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const skip = () => {
@@ -112,7 +209,9 @@ export default function Paywall() {
             ))}
           </View>
 
-          {/* Plans — compact */}
+          {/* Plans — compact. Prices come from the live RevenueCat packages
+              when available; falls back to placeholder copy on web / before
+              the offering finishes loading. */}
           <View style={[styles.plans, COMPACT && { gap: 8, marginTop: spacing.md }]}>
             <PlanCard
               testID="paywall-plan-yearly"
@@ -121,10 +220,10 @@ export default function Paywall() {
                 Haptics.selectionAsync();
                 setPlan('yearly');
               }}
-              badge="SAVE 83%"
+              badge="BEST VALUE"
               title="Yearly"
-              price="AED 149.99/yr"
-              trial="7 days free, then auto-renews"
+              price={annualPkg?.product?.priceString ?? 'Yearly'}
+              trial={annualPkg ? 'Auto-renews yearly' : 'Subscription'}
             />
             <PlanCard
               testID="paywall-plan-weekly"
@@ -134,24 +233,36 @@ export default function Paywall() {
                 setPlan('weekly');
               }}
               title="Weekly"
-              price="AED 14.99/wk"
-              trial="Auto-renews weekly"
+              price={weeklyPkg?.product?.priceString ?? 'Weekly'}
+              trial={weeklyPkg ? 'Auto-renews weekly' : 'Subscription'}
             />
           </View>
 
           {/* CTA pinned to bottom of content */}
           <View style={styles.ctaWrap}>
             <TouchableOpacity
-              style={styles.cta}
+              style={[styles.cta, busy && { opacity: 0.6 }]}
               activeOpacity={0.85}
               onPress={subscribe}
+              disabled={busy}
               testID="paywall-subscribe-button"
             >
-              <Text style={styles.ctaText}>
-                {plan === 'yearly' ? 'Start 7-Day Free Trial' : 'Continue'}
-              </Text>
+              {busy ? (
+                <ActivityIndicator color={'#0E0F0D'} />
+              ) : (
+                <Text style={styles.ctaText}>Continue</Text>
+              )}
             </TouchableOpacity>
-            <Text style={styles.fineprint}>Auto-renewable. Cancel anytime  ·  Terms  ·  Privacy</Text>
+            <View style={styles.footerLinks}>
+              <TouchableOpacity onPress={onRestore} hitSlop={10} testID="paywall-restore">
+                <Text style={styles.footerLink}>Restore Purchases</Text>
+              </TouchableOpacity>
+              <Text style={styles.footerSep}>·</Text>
+              <Text style={styles.footerLinkMuted}>Terms</Text>
+              <Text style={styles.footerSep}>·</Text>
+              <Text style={styles.footerLinkMuted}>Privacy</Text>
+            </View>
+            <Text style={styles.fineprint}>Auto-renewable. Cancel anytime in the App Store / Play Store.</Text>
           </View>
         </View>
       </SafeAreaView>
@@ -301,5 +412,15 @@ const styles = StyleSheet.create({
     ...shadows.glowPrimary,
   },
   ctaText: { ...type.bodyLg, color: '#0E0F0D', fontWeight: '800' },
-  fineprint: { ...type.bodySm, color: colors.textTertiary, textAlign: 'center', marginTop: 10, fontSize: 12 },
+  footerLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
+  footerLink: { ...type.bodySm, color: colors.textPrimary, fontWeight: '700', fontSize: 12 },
+  footerLinkMuted: { ...type.bodySm, color: colors.textTertiary, fontSize: 12 },
+  footerSep: { ...type.bodySm, color: colors.textTertiary, fontSize: 12 },
+  fineprint: { ...type.bodySm, color: colors.textTertiary, textAlign: 'center', marginTop: 8, fontSize: 11 },
 });
