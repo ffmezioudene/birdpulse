@@ -39,6 +39,63 @@ type TabKey = 'photos' | 'description' | 'sounds' | 'range';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+/**
+ * Per-month seasonality copy. We don't have per-species monthly range data
+ * (would require eBird Status & Trends), so we generate context-aware tips
+ * based on the bird's family / migration status + the calendar season for the
+ * selected month.
+ */
+function monthMessage(
+  monthIdx: number,
+  detail: { migrationStatus?: string; family?: string; seasonality?: string; commonName?: string } | null,
+): string {
+  const m = MONTHS[monthIdx];
+  const cur = new Date().getMonth();
+  const status = (detail?.migrationStatus || '').toLowerCase();
+  const family = (detail?.family || '').toLowerCase();
+
+  // Northern-hemisphere season buckets — tuned for the bulk of our users (US/EU/IN).
+  const isSpring = monthIdx >= 2 && monthIdx <= 4;     // Mar-May
+  const isSummer = monthIdx >= 5 && monthIdx <= 7;     // Jun-Aug
+  const isFall   = monthIdx >= 8 && monthIdx <= 10;    // Sep-Nov
+  const isWinter = monthIdx === 11 || monthIdx <= 1;   // Dec-Feb
+
+  const isResident = /(year[-\s]?round|resident|non[-\s]?migrat)/.test(status);
+  const isMigrant  = /(migrant|migrator|migrat)/.test(status) && !isResident;
+  const isPartial  = /partial/.test(status);
+  const isOwl      = /strigidae|tytonidae|owl/.test(family);
+  const isRaptor   = /accipitridae|falconidae|hawk|eagle|falcon/.test(family);
+
+  // Bird-specific overlay (only the most distinctive cases — covers a lot
+  // of UX surface without needing per-species monthly data).
+  if (isOwl) {
+    if (isWinter) return `${m} — owls call most at dusk now; dawn courtship begins late winter.`;
+    if (isSpring) return `${m} — peak nesting season. Owlets often visible by dusk.`;
+    if (isSummer) return `${m} — adults teach fledged young to hunt; family groups stay close.`;
+    return `${m} — juveniles disperse; some species begin dawn-and-dusk calling again.`;
+  }
+
+  if (isResident) {
+    if (isSpring) return `${m} — territory is established; daily song peaks at dawn.`;
+    if (isSummer) return `${m} — actively feeding nestlings and fledglings; quiet midday.`;
+    if (isFall)   return `${m} — flocking and feeding heavily; less vocal as breeding ends.`;
+    return `${m} — sticking to home range; visits feeders most reliably in cold snaps.`;
+  }
+
+  if (isMigrant || isPartial) {
+    if (isSpring) return `${m} — northbound migration arrivals; males in full breeding plumage and song.`;
+    if (isSummer) return `${m} — on breeding territory. Look for paired adults and recently fledged young.`;
+    if (isFall)   return `${m} — southbound migration; juveniles outnumber adults at stopover sites.`;
+    return `${m} — most birds are on wintering grounds away from breeding range.`;
+  }
+
+  // Generic by-season fallback
+  if (isSpring) return `${m} — most active in the dawn chorus; territorial song at its peak.`;
+  if (isSummer) return `${m} — nesting and raising young; activity concentrated at dawn and dusk.`;
+  if (isFall)   return `${m} — flocking ahead of cooler months; juveniles join feeding parties.`;
+  return `${m} — quieter season; activity peaks at midday when temperatures rise.`;
+}
+
 export default function BirdDetail() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -320,9 +377,7 @@ export default function BirdDetail() {
                   })}
                 </ScrollView>
                 <Text style={styles.monthHint}>
-                  {activeMonth === new Date().getMonth()
-                    ? `Most likely seen this month.`
-                    : `Switch months to see how the range shifts.`}
+                  {monthMessage(activeMonth, detail)}
                 </Text>
               </View>
             </View>

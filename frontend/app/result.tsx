@@ -17,11 +17,12 @@ import * as Haptics from 'expo-haptics';
 import { setAudioModeAsync } from 'expo-audio';
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import { IdentifyResult } from '@/src/lib/api';
-import { addHistory, addSighting, toggleFavorite } from '@/src/lib/state';
+import { addHistory, addSighting, slugFromScientific } from '@/src/lib/state';
 import { SEED_BIRDS } from '@/src/lib/birds';
 import { FeatherWave } from '@/src/components/FeatherWave';
 import { PolaroidCard } from '@/src/components/PolaroidCard';
 import { BirdCallPlayer } from '@/src/components/BirdCallPlayer';
+import { CollectionPickerModal } from '@/src/components/CollectionPickerModal';
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -32,6 +33,7 @@ export default function Result() {
   const params = useLocalSearchParams<{ type?: string; imageBase64?: string; payload?: string }>();
   const [data, setData] = useState<IdentifyResult | null>(null);
   const [saved, setSaved] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [logged, setLogged] = useState(false);
   const [displayedConf, setDisplayedConf] = useState(0);
   const [dropped, setDropped] = useState(false);
@@ -171,9 +173,21 @@ export default function Result() {
   const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
   const onSave = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    if (match) await toggleFavorite(match.id);
+    Haptics.selectionAsync().catch(() => {});
+    setPickerOpen(true);
+  };
+
+  const onSavedToCollection = (c: { name: string }) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setSaved(true);
+    // light, non-blocking confirmation
+  };
+
+  const birdForCollection = {
+    id: match?.id || slugFromScientific(data.scientificName) || data.commonName.toLowerCase().replace(/\s+/g, '-'),
+    commonName: data.commonName,
+    scientificName: data.scientificName,
+    image: heroImage,
   };
 
   const onLogSighting = async () => {
@@ -315,6 +329,14 @@ export default function Result() {
           </Animated.View>
         </ScrollView>
       </SafeAreaView>
+
+      <CollectionPickerModal
+        mode="save"
+        visible={pickerOpen}
+        bird={birdForCollection}
+        onClose={() => setPickerOpen(false)}
+        onSaved={onSavedToCollection}
+      />
     </View>
   );
 }

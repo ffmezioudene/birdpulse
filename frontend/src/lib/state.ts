@@ -38,10 +38,24 @@ export type Sighting = {
   createdAt: string;
 };
 
+export type CollectionBird = {
+  id: string;                  // stable id (SEED slug OR sci-name slug)
+  commonName: string;
+  scientificName: string;
+  image?: string;              // url or data: uri — snapshot at save time
+  addedAt: string;
+};
+
 export type Collection = {
   id: string;
   name: string;
-  birdIds: string[];
+  /**
+   * v1 → v2 migration: we used to store just bird IDs. The reader below
+   * silently upgrades old shape to the new `birds: CollectionBird[]`.
+   * Old `birdIds` field is kept readable for backward-compat.
+   */
+  birds: CollectionBird[];
+  birdIds?: string[];          // legacy — no longer written, only read
   createdAt: string;
 };
 
@@ -134,12 +148,86 @@ export async function getCollections(): Promise<Collection[]> {
   const raw = await storage.getItem<string>('birdlens.collections.json', '');
   if (!raw) return [];
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw) as Collection[];
+    // Forward-compat / legacy migration: older versions stored only `birdIds`.
+    // Rewrap so the caller always sees the new `birds` field.
+    return parsed.map((c) => ({
+      ...c,
+      birds: Array.isArray(c.birds)
+        ? c.birds
+        : (c.birdIds || []).map((id) => ({
+            id,
+            commonName: id,
+            scientificName: '',
+            addedAt: c.createdAt,
+          })),
+    }));
   } catch {
     return [];
   }
 }
 
 export async function saveCollections(list: Collection[]): Promise<void> {
-  await storage.setItem('birdlens.collections.json', JSON.stringify(list));
+  // Strip legacy `birdIds` on write — `birds` is the source of truth now.
+  const stripped = list.map(({ birdIds: _legacy, ...c }) => c);
+  await storage.setItem('birdlens.collections.json', JSON.stringify(stripped));
+}
+
+/** Slug from a scientific name: "Erithacus rubecula" → "erithacus-rubecula".
+ *  Used as the stable bird ID for non-SEED species (most of them). */
+export function slugFromScientific(sci: string): string {
+  return (sci || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+}
+
+export async function createCollection(name: string): Promise<Collection> {
+  const list = await getCollections();
+  const next: Collection = {
+    id: `c-${Date.now()}`,
+    name: name.trim() || `My Collection ${list.length + 1}`,
+    birds: [],
+    createdAt: new Date().toISOString(),
+  };
+  await saveCollections([next, ...list]);
+  return next;
+}
+
+export async function renameCollection(id: string, name: string): Promise<void> {
+  const list = await getCollections();
+  const next = list.map((c) => (c.id === id ? { ...c, name: name.trim() || c.name } : c));
+  await saveCollections(next);
+}
+
+export async function deleteCollection(id: string): Promise<void> {
+  const list = await getCollections();
+  await saveCollections(list.filter((c) => c.id !== id));
+}
+
+/** Add a bird snapshot to one of the user's collections. Idempotent — if
+ *  the bird id is already in that collection, this is a no-op. */
+export async function addBirdToCollection(
+  collectionId: string,
+  bird: Omit<CollectionBird, 'addedAt'>,
+): Promise<void> {
+  const list = await getCollections();
+  const next = list.map((c) => {
+    if (c.id !== collectionId) return c;
+    if (c.birds.some((b) => b.id === bird.id)) return c;
+    return {
+      ...c,
+      birds: [{ ...bird, addedAt: new Date().toISOString() }, ...c.birds],
+    };
+  });
+  await saveCollections(next);
+}
+
+export async function removeBirdFromCollection(collectionId: string, birdId: string): Promise<void> {
+  const list = await getCollections();
+  const next = list.map((c) =>
+    c.id === collectionId ? { ...c, birds: c.birds.filter((b) => b.id !== birdId) } : c,
+  );
+  await saveCollections(next);
 }

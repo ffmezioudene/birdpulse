@@ -1,18 +1,16 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Switch, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, type, spacing, radii } from '@/src/theme';
 import { isProEffective, getFreeUses, resetFreeUses, FREE_USES_INITIAL } from '@/src/lib/state';
-import { storage } from '@/src/utils/storage';
 import { IS_DEV_MODE, getDevProUnlocked, setDevProUnlocked } from '@/src/lib/devmode';
 
 export default function Settings() {
   const router = useRouter();
   const [pro, setProState] = useState(false);
-  const [autosave, setAutosave] = useState(false);
   const [devPro, setDevProState] = useState(false);
   const [freeUses, setFreeUses] = useState<number>(FREE_USES_INITIAL);
 
@@ -24,13 +22,7 @@ export default function Settings() {
 
   useEffect(() => {
     refresh();
-    storage.getItem<boolean>('birdlens.autosave', false).then((v) => setAutosave(!!v));
   }, []);
-
-  const toggleAutosave = async (v: boolean) => {
-    setAutosave(v);
-    await storage.setItem('birdlens.autosave', v);
-  };
 
   const toggleDevPro = async (v: boolean) => {
     setDevProState(v);
@@ -70,28 +62,6 @@ export default function Settings() {
             </View>
             <Ionicons name={pro ? 'star' : 'arrow-forward'} size={22} color={colors.secondary} />
           </TouchableOpacity>
-
-          <Section title="Account">
-            <Row icon="person-outline" label="Edit Profile" onPress={() => {}} />
-            <Row icon="language-outline" label="Set Language" right="English" onPress={() => {}} />
-            <RowSwitch
-              icon="images-outline"
-              label="Autosave Photos to Album"
-              value={autosave}
-              onChange={toggleAutosave}
-              testID="setting-autosave"
-            />
-          </Section>
-
-          <Section title="Birding">
-            <Row
-              icon="map-outline"
-              label="Hotspots & Sightings"
-              onPress={() => router.push('/hotspots')}
-              testID="setting-hotspots"
-            />
-            <Row icon="bookmark-outline" label="Your Collections" onPress={() => router.push('/(tabs)/collection')} />
-          </Section>
 
           <Section title="Support">
             <Row icon="help-circle-outline" label="FAQ & Help" onPress={() => {}} />
@@ -183,6 +153,7 @@ function Row({
 function RowSwitch({
   icon, label, value, onChange, testID,
 }: { icon: any; label: string; value: boolean; onChange: (v: boolean) => void; testID?: string }) {
+  const Switch = require('react-native').Switch;
   return (
     <View style={styles.row} testID={testID}>
       <View style={styles.rowIcon}>

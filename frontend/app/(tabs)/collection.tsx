@@ -10,12 +10,13 @@ import * as Haptics from 'expo-haptics';
 import { colors, type, spacing, radii } from '@/src/theme';
 import {
   Collection, HistoryItem, Sighting,
-  getCollections, getFavorites, getHistory, getSightings, saveCollections,
+  getCollections, getFavorites, getHistory, getSightings,
 } from '@/src/lib/state';
 import { computeBadges, currentStreakDays, uniqueSpecies } from '@/src/lib/badges';
 import { SEED_BIRDS } from '@/src/lib/birds';
 import { FeatherWave } from '@/src/components/FeatherWave';
 import { MapView, Marker } from '@/src/components/MapView';
+import { CollectionPickerModal } from '@/src/components/CollectionPickerModal';
 
 type ViewKey = 'map' | 'timeline' | 'badges' | 'collections' | 'favorites';
 
@@ -26,6 +27,7 @@ export default function NatureJournal() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [sightings, setSightings] = useState<Sighting[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
     setCollections(await getCollections());
@@ -41,17 +43,13 @@ export default function NatureJournal() {
   const badges = computeBadges(history, sightings);
   const earnedCount = badges.filter((b) => b.earned).length;
 
-  const addCollection = async () => {
-    Haptics.selectionAsync();
-    const next: Collection = {
-      id: `c-${Date.now()}`,
-      name: `My Collection ${collections.length + 1}`,
-      birdIds: [],
-      createdAt: new Date().toISOString(),
-    };
-    const list = [next, ...collections];
-    setCollections(list);
-    await saveCollections(list);
+  const onNewCollection = () => {
+    Haptics.selectionAsync().catch(() => {});
+    setCreateOpen(true);
+  };
+
+  const onCollectionCreated = async () => {
+    await load();
   };
 
   return (
@@ -211,7 +209,7 @@ export default function NatureJournal() {
 
         {view === 'collections' && (
           <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 160, gap: 10 }}>
-            <TouchableOpacity style={styles.addCard} onPress={addCollection} testID="add-collection-button">
+            <TouchableOpacity style={styles.addCard} onPress={onNewCollection} testID="add-collection-button">
               <View style={styles.addIcon}><Ionicons name="add" size={22} color={colors.primary} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.addTitle}>New Collection</Text>
@@ -222,11 +220,43 @@ export default function NatureJournal() {
               <EmptyState title="No collections yet" subtitle="Group your finds into named collections." />
             ) : collections.map((c) => (
               <View key={c.id} style={styles.collCard} testID={`collection-${c.id}`}>
-                <Ionicons name="bookmark" size={18} color={colors.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.tName}>{c.name}</Text>
-                  <Text style={styles.tMeta}>{c.birdIds.length} birds</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Ionicons name="bookmark" size={18} color={colors.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.tName}>{c.name}</Text>
+                    <Text style={styles.tMeta}>{c.birds.length} {c.birds.length === 1 ? 'bird' : 'birds'}</Text>
+                  </View>
                 </View>
+                {c.birds.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 8, paddingTop: 10 }}
+                  >
+                    {c.birds.slice(0, 8).map((b) => (
+                      <TouchableOpacity
+                        key={b.id}
+                        onPress={() => {
+                          // Only navigate when we know the bird is in our catalog;
+                          // otherwise we'd land on a 404 detail page.
+                          const known = SEED_BIRDS.some((s) => s.id === b.id);
+                          if (known) router.push(`/bird/${b.id}` as any);
+                        }}
+                        style={styles.collBird}
+                        testID={`collection-bird-${b.id}`}
+                      >
+                        {b.image ? (
+                          <Image source={{ uri: b.image }} style={styles.collBirdImg} />
+                        ) : (
+                          <View style={[styles.collBirdImg, { alignItems: 'center', justifyContent: 'center' }]}>
+                            <Ionicons name="leaf-outline" size={16} color={colors.textTertiary} />
+                          </View>
+                        )}
+                        <Text style={styles.collBirdName} numberOfLines={1}>{b.commonName}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
               </View>
             ))}
           </ScrollView>
@@ -255,6 +285,13 @@ export default function NatureJournal() {
           />
         )}
       </SafeAreaView>
+
+      <CollectionPickerModal
+        mode="create"
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={onCollectionCreated}
+      />
     </View>
   );
 }
@@ -392,9 +429,18 @@ const styles = StyleSheet.create({
   addTitle: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700' },
   addSub: { ...type.bodySm, color: colors.textTertiary },
   collCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
+    flexDirection: 'column',
     padding: spacing.md, borderRadius: radii.card,
     backgroundColor: colors.card, borderWidth: 1, borderColor: colors.hairline,
+  },
+  collBird: {
+    width: 78, alignItems: 'center', gap: 4,
+  },
+  collBirdImg: {
+    width: 70, height: 70, borderRadius: 10, backgroundColor: colors.bgTertiary,
+  },
+  collBirdName: {
+    ...type.caption, color: colors.textSecondary, textAlign: 'center', maxWidth: 78,
   },
   empty: { alignItems: 'center', padding: spacing.xl, gap: 10, marginTop: spacing.xl },
   emptyTitle: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700', textAlign: 'center' },
