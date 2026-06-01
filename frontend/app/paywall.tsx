@@ -17,7 +17,7 @@ import * as Haptics from 'expo-haptics';
 
 import { PAYWALL_BG } from '@/src/lib/birds';
 import { storage } from '@/src/utils/storage';
-import { KEYS, setPro, isProEffective } from '@/src/lib/state';
+import { KEYS, isProEffective } from '@/src/lib/state';
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import { useRevenueCat } from '@/src/providers/RevenueCatProvider';
 import {
@@ -48,16 +48,44 @@ export default function Paywall() {
   // Live offering packages from RevenueCat (or null on web / failure).
   const [weeklyPkg, setWeeklyPkg] = useState<PurchasesPackage | null>(null);
   const [annualPkg, setAnnualPkg] = useState<PurchasesPackage | null>(null);
+  // Lifecycle of the offerings fetch — controls loading / error states.
+  // 'idle'   = haven't tried yet (web / not initialized)
+  // 'loading'= fetching from RC
+  // 'ready'  = at least one of the two packages loaded successfully
+  // 'error'  = RC returned nothing usable on a build that should have it
+  const [offeringsState, setOfferingsState] =
+    useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const triedHostedRef = useRef(false);
 
-  // Load packages for the fallback UI so the displayed prices match the store.
+  // Load the live offering. Prices, currency, trial, everything comes from
+  // RevenueCat — we never hardcode a price in this UI.
   useEffect(() => {
-    if (!IS_RC_AVAILABLE || !rc.initialized) return;
+    if (!IS_RC_AVAILABLE) {
+      // Web preview: skip; we'll render the mobile-only notice below.
+      setOfferingsState('idle');
+      return;
+    }
+    if (!rc.initialized) return;
+    setOfferingsState('loading');
     (async () => {
       const off = await getCurrentOffering();
-      if (!off) return;
-      setWeeklyPkg(off.weekly ?? off.availablePackages.find((p) => /week/i.test(p.identifier)) ?? null);
-      setAnnualPkg(off.annual ?? off.availablePackages.find((p) => /annual|year/i.test(p.identifier)) ?? null);
+      if (!off) {
+        setOfferingsState('error');
+        return;
+      }
+      const w =
+        off.weekly ??
+        off.availablePackages.find((p) => /week/i.test(p.identifier)) ??
+        null;
+      const a =
+        off.annual ??
+        off.availablePackages.find((p) => /annual|year/i.test(p.identifier)) ??
+        null;
+      setWeeklyPkg(w);
+      setAnnualPkg(a);
+      // Even a single package counts as a usable offering; we only flip to
+      // 'error' if both are missing (real misconfiguration).
+      setOfferingsState(w || a ? 'ready' : 'error');
     })();
   }, [rc.initialized]);
 
@@ -90,39 +118,30 @@ export default function Paywall() {
     Haptics.selectionAsync().catch(() => {});
 
     const chosenPkg = plan === 'yearly' ? annualPkg : weeklyPkg;
+    // Subscribe button is only rendered when we have a live RevenueCat
+    // package. Anything else is a no-op rather than a fake grant.
+    if (!IS_RC_AVAILABLE || !chosenPkg) {
+      Alert.alert(
+        'Subscriptions unavailable',
+        'In-app purchases require the BirdPulse mobile app. Please open BirdPulse on your iOS or Android device.',
+      );
+      return;
+    }
 
-    // Native + we have a live package → real RevenueCat purchase.
-    if (IS_RC_AVAILABLE && chosenPkg) {
-      setBusy(true);
-      try {
-        const outcome = await purchasePackage(chosenPkg);
-        if (outcome.kind === 'purchased') {
-          await rc.refresh();
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-          router.replace('/(tabs)');
-        } else if (outcome.kind === 'error') {
-          Alert.alert('Purchase failed', outcome.message);
-        }
-        // 'cancelled' — user backed out, do nothing.
-      } finally {
-        setBusy(false);
+    setBusy(true);
+    try {
+      const outcome = await purchasePackage(chosenPkg);
+      if (outcome.kind === 'purchased') {
+        await rc.refresh();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        router.replace('/(tabs)');
+      } else if (outcome.kind === 'error') {
+        Alert.alert('Purchase failed', outcome.message);
       }
-      return;
+      // 'cancelled' — user backed out, do nothing.
+    } finally {
+      setBusy(false);
     }
-
-    // Web preview / no packages loaded → behave as before so the rest of the
-    // app stays testable. (Real purchases require a native dev/prod build.)
-    if (__DEV__) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      await setPro(true);
-      router.replace('/(tabs)');
-      return;
-    }
-
-    Alert.alert(
-      'Subscriptions unavailable',
-      'In-app purchases require the BirdPulse mobile app. Please try again in the iOS or Android app.',
-    );
   };
 
   const onRestore = async () => {
@@ -151,6 +170,87 @@ export default function Paywall() {
     Haptics.selectionAsync();
     router.replace('/(tabs)');
   };
+
+  // ---- Derived strings (NEVER hardcoded prices) --------------------------
+  //
+  // Every visible price string here comes from RevenueCat's `priceString`,
+  // which is already localized to the user's currency by the store SDK.
+  // The SAVE % badge is computed from the actual prices, not hardcoded.
+
+  /** Human-readable intro offer description for a single product. */
+  const formatIntro = (pkg: PurchasesPackage | null): string | null => {
+    const intro = pkg?.product?.introPrice;
+    if (!intro) return null;
+    const units = intro.periodNumberOfUnits;
+    const unit = (intro.periodUnit || '').toUpperCase();
+    if (!units || !unit) return null;
+    const label =
+      unit === 'DAY'
+        ? units === 1 ? 'day' : 'days'
+        : unit === 'WEEK'
+          ? units === 1 ? 'week' : 'weeks'
+          : unit === 'MONTH'
+            ? units === 1 ? 'month' : 'months'
+            : unit === 'YEAR'
+              ? units === 1 ? 'year' : 'years'
+              : 'period';
+    // Apple/Google can model a free intro as either price === 0 OR an empty
+    // priceString from StoreKit. Treat both as a "free trial".
+    const isFree = intro.price === 0;
+    if (isFree) return `${units}-${label.replace(/s$/, '')} free trial`;
+    return `${units} ${label} at ${intro.priceString}`;
+  };
+
+  /** Per-period subtitle for each plan card. */
+  const subtitleFor = (
+    pkg: PurchasesPackage | null,
+    period: 'year' | 'week',
+  ): string => {
+    if (!pkg) return ''; // Cleanly blank during loading
+    const intro = formatIntro(pkg);
+    if (intro) return `${intro}, then auto-renews ${period}ly`;
+    return `Auto-renews ${period}ly`;
+  };
+
+  /**
+   * Compute a discount badge for the yearly plan vs the weekly plan, using
+   * the SDK's pre-normalized `pricePerWeek` on the annual product (or fall
+   * back to dividing price by 52). Returns null if we don't have enough info
+   * to make an honest claim.
+   */
+  const yearlyBadge = ((): string | null => {
+    if (!annualPkg || !weeklyPkg) return null;
+    const annualPerWeek =
+      annualPkg.product.pricePerWeek ?? annualPkg.product.price / 52;
+    const weeklyPrice = weeklyPkg.product.price;
+    if (!annualPerWeek || !weeklyPrice || annualPerWeek >= weeklyPrice) {
+      return null;
+    }
+    const savings = 1 - annualPerWeek / weeklyPrice;
+    // Only surface a savings claim if it's meaningfully better.
+    if (savings < 0.1) return null;
+    const pct = Math.round(savings * 100);
+    return `SAVE ${pct}%`;
+  })();
+
+  /** CTA label — uses real intro offer wording when present. */
+  const ctaLabel = ((): string => {
+    const chosen = plan === 'yearly' ? annualPkg : weeklyPkg;
+    if (!chosen) return 'Continue';
+    const intro = chosen.product.introPrice;
+    if (intro && intro.price === 0 && intro.periodNumberOfUnits > 0) {
+      return `Start ${intro.periodNumberOfUnits}-day Free Trial`;
+    }
+    return `Continue with ${chosen.product.priceString}`;
+  })();
+
+  // Showing the purchase UI requires real packages. We block-render
+  // skeletons during 'loading' and show an "unavailable" message on 'error'.
+  const showLoading = IS_RC_AVAILABLE && offeringsState === 'loading' && !weeklyPkg && !annualPkg;
+  const showError = IS_RC_AVAILABLE && offeringsState === 'error';
+  // On web (offeringsState === 'idle' and IS_RC_AVAILABLE === false) we show
+  // a mobile-only notice instead of the purchase buttons — never fake prices.
+  const showMobileOnlyNotice = !IS_RC_AVAILABLE;
 
   // Hero ~40% of screen
   const heroHeight = Math.max(260, Math.round(SCREEN_H * 0.4));
@@ -210,65 +310,115 @@ export default function Paywall() {
             ))}
           </View>
 
-          {/* Plans — compact. Prices come from the live RevenueCat packages
-              when available; falls back to placeholder copy on web / before
-              the offering finishes loading. */}
-          <View style={[styles.plans, COMPACT && { gap: 8, marginTop: spacing.md }]}>
-            <PlanCard
-              testID="paywall-plan-yearly"
-              active={plan === 'yearly'}
-              onPress={() => {
-                Haptics.selectionAsync();
-                setPlan('yearly');
-              }}
-              badge="BEST VALUE"
-              title="Yearly"
-              price={annualPkg?.product?.priceString ?? 'Yearly'}
-              trial={annualPkg ? 'Auto-renews yearly' : 'Subscription'}
-            />
-            <PlanCard
-              testID="paywall-plan-weekly"
-              active={plan === 'weekly'}
-              onPress={() => {
-                Haptics.selectionAsync();
-                setPlan('weekly');
-              }}
-              title="Weekly"
-              price={weeklyPkg?.product?.priceString ?? 'Weekly'}
-              trial={weeklyPkg ? 'Auto-renews weekly' : 'Subscription'}
-            />
-          </View>
+          {/* Plans + CTA — purchase UI ONLY rendered when we have real live
+              prices from RevenueCat. No hardcoded prices ever leak here. */}
+          {showLoading && (
+            <View style={[styles.plans, COMPACT && { gap: 8, marginTop: spacing.md }]}>
+              <View style={[styles.plan, styles.planSkeleton]}>
+                <View style={[styles.skelLine, { width: '40%' }]} />
+                <View style={[styles.skelLine, { width: '30%', marginTop: 8 }]} />
+              </View>
+              <View style={[styles.plan, styles.planSkeleton]}>
+                <View style={[styles.skelLine, { width: '35%' }]} />
+                <View style={[styles.skelLine, { width: '28%', marginTop: 8 }]} />
+              </View>
+              <View style={{ alignItems: 'center', marginTop: spacing.md }}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={styles.loadingNote}>Loading subscription options…</Text>
+              </View>
+            </View>
+          )}
 
-          {/* CTA pinned to bottom of content */}
-          <View style={styles.ctaWrap}>
-            <TouchableOpacity
-              style={[styles.cta, busy && { opacity: 0.6 }]}
-              activeOpacity={0.85}
-              onPress={subscribe}
-              disabled={busy}
-              testID="paywall-subscribe-button"
-            >
-              {busy ? (
-                <ActivityIndicator color={'#0E0F0D'} />
-              ) : (
-                <Text style={styles.ctaText}>Continue</Text>
-              )}
-            </TouchableOpacity>
-            <View style={styles.footerLinks}>
-              <TouchableOpacity onPress={onRestore} hitSlop={10} testID="paywall-restore">
-                <Text style={styles.footerLink}>Restore Purchases</Text>
-              </TouchableOpacity>
-              <Text style={styles.footerSep}>·</Text>
-              <TouchableOpacity onPress={openTermsOfUse} hitSlop={10} testID="paywall-terms">
-                <Text style={styles.footerLinkMuted}>Terms</Text>
-              </TouchableOpacity>
-              <Text style={styles.footerSep}>·</Text>
-              <TouchableOpacity onPress={openPrivacyPolicy} hitSlop={10} testID="paywall-privacy">
-                <Text style={styles.footerLinkMuted}>Privacy</Text>
+          {showError && (
+            <View style={styles.unavailableBox}>
+              <Ionicons name="cloud-offline-outline" size={32} color={colors.textTertiary} />
+              <Text style={styles.unavailableTitle}>Subscriptions unavailable</Text>
+              <Text style={styles.unavailableBody}>
+                We couldn’t load your subscription options right now. Check your connection and try again.
+              </Text>
+              <TouchableOpacity
+                style={styles.unavailableBtn}
+                onPress={() => router.replace('/paywall')}
+                testID="paywall-retry"
+              >
+                <Text style={styles.unavailableBtnText}>Try Again</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.fineprint}>Auto-renewable. Cancel anytime in the App Store / Play Store.</Text>
-          </View>
+          )}
+
+          {showMobileOnlyNotice && (
+            <View style={styles.unavailableBox}>
+              <Ionicons name="phone-portrait-outline" size={32} color={colors.textTertiary} />
+              <Text style={styles.unavailableTitle}>Available in the mobile app</Text>
+              <Text style={styles.unavailableBody}>
+                BirdPulse subscriptions are purchased through the iOS App Store and Google Play. Open BirdPulse on your phone to subscribe.
+              </Text>
+            </View>
+          )}
+
+          {!showLoading && !showError && !showMobileOnlyNotice && (
+            <>
+              <View style={[styles.plans, COMPACT && { gap: 8, marginTop: spacing.md }]}>
+                {annualPkg && (
+                  <PlanCard
+                    testID="paywall-plan-yearly"
+                    active={plan === 'yearly'}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setPlan('yearly');
+                    }}
+                    badge={yearlyBadge ?? 'BEST VALUE'}
+                    title="Yearly"
+                    price={annualPkg.product.priceString}
+                    trial={subtitleFor(annualPkg, 'year')}
+                  />
+                )}
+                {weeklyPkg && (
+                  <PlanCard
+                    testID="paywall-plan-weekly"
+                    active={plan === 'weekly'}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setPlan('weekly');
+                    }}
+                    title="Weekly"
+                    price={weeklyPkg.product.priceString}
+                    trial={subtitleFor(weeklyPkg, 'week')}
+                  />
+                )}
+              </View>
+
+              <View style={styles.ctaWrap}>
+                <TouchableOpacity
+                  style={[styles.cta, busy && { opacity: 0.6 }]}
+                  activeOpacity={0.85}
+                  onPress={subscribe}
+                  disabled={busy}
+                  testID="paywall-subscribe-button"
+                >
+                  {busy ? (
+                    <ActivityIndicator color={'#0E0F0D'} />
+                  ) : (
+                    <Text style={styles.ctaText}>{ctaLabel}</Text>
+                  )}
+                </TouchableOpacity>
+                <View style={styles.footerLinks}>
+                  <TouchableOpacity onPress={onRestore} hitSlop={10} testID="paywall-restore">
+                    <Text style={styles.footerLink}>Restore Purchases</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.footerSep}>·</Text>
+                  <TouchableOpacity onPress={openTermsOfUse} hitSlop={10} testID="paywall-terms">
+                    <Text style={styles.footerLinkMuted}>Terms</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.footerSep}>·</Text>
+                  <TouchableOpacity onPress={openPrivacyPolicy} hitSlop={10} testID="paywall-privacy">
+                    <Text style={styles.footerLinkMuted}>Privacy</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.fineprint}>Auto-renewable. Cancel anytime in the App Store / Play Store.</Text>
+              </View>
+            </>
+          )}
         </View>
       </SafeAreaView>
     </View>
@@ -428,4 +578,52 @@ const styles = StyleSheet.create({
   footerLinkMuted: { ...type.bodySm, color: colors.textTertiary, fontSize: 12 },
   footerSep: { ...type.bodySm, color: colors.textTertiary, fontSize: 12 },
   fineprint: { ...type.bodySm, color: colors.textTertiary, textAlign: 'center', marginTop: 8, fontSize: 11 },
+  // ---- Loading & error states ---------------------------------------------
+  planSkeleton: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  skelLine: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  loadingNote: {
+    ...type.bodySm,
+    color: colors.textTertiary,
+    marginTop: 8,
+    fontSize: 12,
+  },
+  unavailableBox: {
+    marginTop: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.hairline,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    alignItems: 'center',
+    gap: 8,
+  },
+  unavailableTitle: {
+    ...type.bodyLg,
+    color: colors.textPrimary,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  unavailableBody: {
+    ...type.body,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  unavailableBtn: {
+    marginTop: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 12,
+    borderRadius: radii.button,
+    backgroundColor: colors.primary,
+  },
+  unavailableBtnText: { ...type.body, color: '#0E0F0D', fontWeight: '800' },
 });
