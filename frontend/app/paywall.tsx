@@ -26,6 +26,7 @@ import {
   getCurrentOffering,
   purchasePackage,
 } from '@/src/lib/revenuecat';
+import { openPrivacyPolicy, openTermsOfUse } from '@/src/lib/links';
 import type { PurchasesPackage } from 'react-native-purchases';
 
 const { height: SCREEN_H } = Dimensions.get('window');
@@ -258,9 +259,13 @@ export default function Paywall() {
                 <Text style={styles.footerLink}>Restore Purchases</Text>
               </TouchableOpacity>
               <Text style={styles.footerSep}>·</Text>
-              <Text style={styles.footerLinkMuted}>Terms</Text>
+              <TouchableOpacity onPress={openTermsOfUse} hitSlop={10} testID="paywall-terms">
+                <Text style={styles.footerLinkMuted}>Terms</Text>
+              </TouchableOpacity>
               <Text style={styles.footerSep}>·</Text>
-              <Text style={styles.footerLinkMuted}>Privacy</Text>
+              <TouchableOpacity onPress={openPrivacyPolicy} hitSlop={10} testID="paywall-privacy">
+                <Text style={styles.footerLinkMuted}>Privacy</Text>
+              </TouchableOpacity>
             </View>
             <Text style={styles.fineprint}>Auto-renewable. Cancel anytime in the App Store / Play Store.</Text>
           </View>

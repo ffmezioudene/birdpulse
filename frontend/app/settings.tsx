@@ -9,6 +9,7 @@ import { isProEffective, resetFreeLimits } from '@/src/lib/state';
 import { IS_DEV_MODE, getDevProUnlocked, setDevProUnlocked } from '@/src/lib/devmode';
 import { useRevenueCat } from '@/src/providers/RevenueCatProvider';
 import { IS_RC_AVAILABLE } from '@/src/lib/revenuecat';
+import { openPrivacyPolicy, openTermsOfUse } from '@/src/lib/links';
 
 export default function Settings() {
   const router = useRouter();
@@ -137,12 +138,14 @@ export default function Settings() {
             <Row
               icon="document-text-outline"
               label="Privacy Policy"
-              onPress={() => Linking.openURL('https://example.com/privacy').catch(() => {})}
+              onPress={openPrivacyPolicy}
+              testID="settings-privacy"
             />
             <Row
               icon="document-outline"
               label="Terms of Use"
-              onPress={() => Linking.openURL('https://example.com/terms').catch(() => {})}
+              onPress={openTermsOfUse}
+              testID="settings-terms"
             />
           </Section>
 
