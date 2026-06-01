@@ -184,6 +184,22 @@ export default function Paywall() {
     const units = intro.periodNumberOfUnits;
     const unit = (intro.periodUnit || '').toUpperCase();
     if (!units || !unit) return null;
+    const isFree = intro.price === 0;
+    if (isFree) {
+      // Normalize to days for consistent "N days free" copy.
+      const days =
+        unit === 'DAY'
+          ? units
+          : unit === 'WEEK'
+            ? units * 7
+            : unit === 'MONTH'
+              ? units * 30
+              : unit === 'YEAR'
+                ? units * 365
+                : units;
+      return `${days} ${days === 1 ? 'day' : 'days'} free`;
+    }
+    // Discounted (not free) intro offer
     const label =
       unit === 'DAY'
         ? units === 1 ? 'day' : 'days'
@@ -194,10 +210,6 @@ export default function Paywall() {
             : unit === 'YEAR'
               ? units === 1 ? 'year' : 'years'
               : 'period';
-    // Apple/Google can model a free intro as either price === 0 OR an empty
-    // priceString from StoreKit. Treat both as a "free trial".
-    const isFree = intro.price === 0;
-    if (isFree) return `${units}-${label.replace(/s$/, '')} free trial`;
     return `${units} ${label} at ${intro.priceString}`;
   };
 
@@ -238,8 +250,24 @@ export default function Paywall() {
     const chosen = plan === 'yearly' ? annualPkg : weeklyPkg;
     if (!chosen) return 'Continue';
     const intro = chosen.product.introPrice;
-    if (intro && intro.price === 0 && intro.periodNumberOfUnits > 0) {
-      return `Start ${intro.periodNumberOfUnits}-day Free Trial`;
+    const units = intro?.periodNumberOfUnits ?? 0;
+    const unit = (intro?.periodUnit || '').toUpperCase();
+    const isFree = !!intro && intro.price === 0 && units > 0;
+
+    if (isFree) {
+      // Normalize WEEK / MONTH / YEAR trials to a day count so the copy reads
+      // "Start 7 days free" regardless of how the store models the period.
+      const days =
+        unit === 'DAY'
+          ? units
+          : unit === 'WEEK'
+            ? units * 7
+            : unit === 'MONTH'
+              ? units * 30
+              : unit === 'YEAR'
+                ? units * 365
+                : units;
+      return `Start ${days} ${days === 1 ? 'day' : 'days'} free`;
     }
     return `Continue with ${chosen.product.priceString}`;
   })();
