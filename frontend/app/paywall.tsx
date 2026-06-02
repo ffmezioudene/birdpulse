@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,6 @@ import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import { useRevenueCat } from '@/src/providers/RevenueCatProvider';
 import {
   IS_RC_AVAILABLE,
-  PaywallResult,
   getCurrentOffering,
   purchasePackage,
 } from '@/src/lib/revenuecat';
@@ -55,7 +54,6 @@ export default function Paywall() {
   // 'error'  = RC returned nothing usable on a build that should have it
   const [offeringsState, setOfferingsState] =
     useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const triedHostedRef = useRef(false);
 
   // Load the live offering. Prices, currency, trial, everything comes from
   // RevenueCat — we never hardcode a price in this UI.
@@ -97,21 +95,15 @@ export default function Paywall() {
         return;
       }
       storage.setItem(KEYS.paywallSeen, true);
-
-      // Try the RevenueCat-hosted paywall once per mount on native.
-      // On web (or if presentation isn't available) we silently keep the
-      // custom fallback UI visible.
-      if (!IS_RC_AVAILABLE || triedHostedRef.current || !rc.initialized) return;
-      triedHostedRef.current = true;
-      try {
-        const res = await rc.presentPaywallIfNeeded();
-        if (res === PaywallResult.Purchased || res === PaywallResult.Restored) {
-          router.replace('/(tabs)');
-        }
-        // CANCELLED / NOT_PRESENTED / ERROR → stay on the custom fallback UI.
-      } catch {}
+      // NOTE: We deliberately do NOT auto-invoke RevenueCatUI.presentPaywallIfNeeded()
+      // here. It requires a published Paywall design attached to the offering in the
+      // RevenueCat dashboard — if none exists, the SDK throws "Error presenting
+      // paywall: document is not..." into the user's face. Our custom dark paywall
+      // already handles everything (live prices, dynamic SAVE %, free-trial CTA,
+      // restore, Apple-compliant footer). When you publish a hosted Paywall design
+      // later, we can flip a flag to try it first and fall back to this UI.
     })();
-  }, [router, rc.initialized]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const subscribe = async () => {
     if (busy) return;

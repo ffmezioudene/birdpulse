@@ -16,6 +16,36 @@ import {
 import { storage } from '@/src/utils/storage';
 import { KEYS } from '@/src/lib/state';
 
+/** Wrap an arbitrary promise with a hard timeout so a hung native bridge
+ *  never blocks the rest of the app. Resolves to `null` on timeout. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    let done = false;
+    const t = setTimeout(() => {
+      if (!done) {
+        done = true;
+        if (__DEV__) console.log(`[RC] operation timed out after ${ms}ms`);
+        resolve(null);
+      }
+    }, ms);
+    p.then(
+      (v) => {
+        if (done) return;
+        done = true;
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        if (done) return;
+        done = true;
+        clearTimeout(t);
+        if (__DEV__) console.log('[RC] operation rejected:', e?.message ?? e);
+        resolve(null);
+      },
+    );
+  });
+}
+
 type Ctx = {
   /** True once configure() has been awaited (or skipped on web). */
   initialized: boolean;
@@ -62,15 +92,21 @@ export function RevenueCatProvider({ children }: { children: React.ReactNode }) 
         if (!cancelled) setInitialized(true);
         return;
       }
-      const ok = await configureRevenueCat();
+      // configure() — capped at 5s so a hung native bridge can't block boot.
+      const ok = await withTimeout(configureRevenueCat(), 5000);
       if (cancelled) return;
+      // Whatever happens, mark initialized so the rest of the app proceeds.
       setInitialized(true);
       if (!ok) return;
 
-      const info = await getCustomerInfo();
+      // getCustomerInfo() — also timeout-bounded. If the network is dead,
+      // the user simply starts in the non-Pro state until the next refresh.
+      const info = await withTimeout(getCustomerInfo(), 5000);
       if (cancelled) return;
-      setCustomerInfo(info);
-      syncProFlag(info);
+      if (info) {
+        setCustomerInfo(info);
+        syncProFlag(info);
+      }
 
       unsub = addCustomerInfoListener((next) => {
         setCustomerInfo(next);

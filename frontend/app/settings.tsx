@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 
 import { colors, type, spacing, radii } from '@/src/theme';
 import { isProEffective, resetFreeLimits } from '@/src/lib/state';
@@ -42,14 +43,22 @@ export default function Settings() {
   };
 
   const onManageSubscription = async () => {
-    if (!IS_RC_AVAILABLE) {
-      Alert.alert(
-        'Mobile-only',
-        'Subscription management is available in the iOS and Android app.',
-      );
+    // Apple's official guidance is to deep-link straight to the user's
+    // Subscriptions screen. Same on Google Play. This works regardless of
+    // whether the RC-hosted Customer Center has been configured in the
+    // dashboard, so users always have a working "Manage / Cancel" entry.
+    if (Platform.OS === 'ios') {
+      Linking.openURL('itms-apps://apps.apple.com/account/subscriptions').catch(() => {});
       return;
     }
-    await rc.openCustomerCenter();
+    if (Platform.OS === 'android') {
+      Linking.openURL('https://play.google.com/store/account/subscriptions').catch(() => {});
+      return;
+    }
+    Alert.alert(
+      'Mobile-only',
+      'Subscription management is available in the iOS and Android app.',
+    );
   };
 
   const onRestore = async () => {
@@ -179,9 +188,36 @@ export default function Settings() {
             </View>
           )}
           {/* ====== END DEVELOPER SECTION ====== */}
+
+          {/* Version footer — tap 7× to open Diagnostics (debug screen). */}
+          <VersionFooter onUnlock={() => router.push('/diagnostics' as any)} />
         </ScrollView>
       </SafeAreaView>
     </View>
+  );
+}
+
+/** Hidden tap-target for the diagnostic / debug screen. Never gives Pro,
+ *  never exposes secrets — just routes to /diagnostics so support can pull
+ *  env / RC config info from a real device. */
+function VersionFooter({ onUnlock }: { onUnlock: () => void }) {
+  const tapsRef = useRef(0);
+  const lastTapRef = useRef(0);
+  const version = Constants.expoConfig?.version ?? '—';
+  const onPress = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current > 1200) tapsRef.current = 0;
+    lastTapRef.current = now;
+    tapsRef.current += 1;
+    if (tapsRef.current >= 7) {
+      tapsRef.current = 0;
+      onUnlock();
+    }
+  };
+  return (
+    <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={styles.versionWrap} testID="settings-version">
+      <Text style={styles.versionText}>BirdPulse · v{version}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -265,4 +301,11 @@ const styles = StyleSheet.create({
   rowLabel: { ...type.body, color: colors.textPrimary },
   rowRight: { ...type.bodySm, color: colors.textTertiary, marginRight: 6 },
   devNote: { ...type.caption, color: colors.textTertiary, paddingHorizontal: spacing.sm, marginTop: 6, lineHeight: 16 },
+  versionWrap: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.lg,
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  versionText: { ...type.caption, color: colors.textTertiary, opacity: 0.6 },
 });
