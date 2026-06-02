@@ -15,6 +15,7 @@ import {
 } from '@/src/lib/revenuecat';
 import { storage } from '@/src/utils/storage';
 import { KEYS } from '@/src/lib/state';
+import { bootMark } from '@/src/lib/boot-trace';
 
 /** Wrap an arbitrary promise with a hard timeout so a hung native bridge
  *  never blocks the rest of the app. Resolves to `null` on timeout. */
@@ -82,18 +83,20 @@ export function RevenueCatProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   useEffect(() => {
+    bootMark('rc:effect-start');
     let cancelled = false;
     let unsub: (() => void) | null = null;
 
     (async () => {
       if (!IS_RC_AVAILABLE) {
-        // Web preview / SSR: skip RC entirely but mark ready so the UI
-        // doesn't sit on a forever-loading boot screen.
+        bootMark('rc:platform-unavailable');
         if (!cancelled) setInitialized(true);
         return;
       }
       // configure() — capped at 5s so a hung native bridge can't block boot.
+      bootMark('rc:configure-start');
       const ok = await withTimeout(configureRevenueCat(), 5000);
+      bootMark(ok ? 'rc:configure-ok' : 'rc:configure-failed');
       if (cancelled) return;
       // Whatever happens, mark initialized so the rest of the app proceeds.
       setInitialized(true);
@@ -101,7 +104,9 @@ export function RevenueCatProvider({ children }: { children: React.ReactNode }) 
 
       // getCustomerInfo() — also timeout-bounded. If the network is dead,
       // the user simply starts in the non-Pro state until the next refresh.
+      bootMark('rc:customer-info-start');
       const info = await withTimeout(getCustomerInfo(), 5000);
+      bootMark(info ? 'rc:customer-info-ok' : 'rc:customer-info-failed');
       if (cancelled) return;
       if (info) {
         setCustomerInfo(info);
@@ -112,6 +117,7 @@ export function RevenueCatProvider({ children }: { children: React.ReactNode }) 
         setCustomerInfo(next);
         syncProFlag(next);
       });
+      bootMark('rc:listener-attached');
     })();
 
     return () => {

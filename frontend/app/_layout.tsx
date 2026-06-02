@@ -1,10 +1,9 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { setAudioModeAsync } from 'expo-audio';
 import {
   useFonts,
   PlusJakartaSans_400Regular,
@@ -16,18 +15,65 @@ import {
 
 import { useIconFonts } from '@/src/hooks/use-icon-fonts';
 import { RevenueCatProvider } from '@/src/providers/RevenueCatProvider';
+import { bootMark, bootSealCurrentAsLast } from '@/src/lib/boot-trace';
 
-// Keep the native splash visible until we explicitly hide it. ALWAYS guard
-// the call — on web / Node these functions can throw.
-SplashScreen.preventAutoHideAsync().catch(() => {});
+// =============================================================================
+// MODULE-LEVEL SPLASH FAILSAFE
+//
+// Everything inside `useEffect` only runs if React actually mounts. If the
+// JS bundle loaded but the very first render hits a synchronous error in
+// some imported native module, the splash would otherwise hang forever.
+//
+// By scheduling `hideAsync()` at module top-level (BEFORE any React code
+// runs), we guarantee the native splash hides after 3s no matter what
+// happens inside React or any of our providers.
+// =============================================================================
+try {
+  SplashScreen.preventAutoHideAsync().catch(() => {});
+  bootMark('splash:prevent-auto-hide');
+} catch (e) {
+  bootMark('splash:prevent-auto-hide', false, e);
+}
 
-// Maximum time the native splash is ever allowed to remain visible. If
-// something (fonts, network, RC SDK) hangs, we still get into the JS UI
-// rather than stranding the user on the launch screen forever.
-const SPLASH_FAILSAFE_MS = 6000;
+const MODULE_FAILSAFE_MS = 3000;
+setTimeout(() => {
+  SplashScreen.hideAsync()
+    .then(() => bootMark('splash:hidden-by-module-failsafe'))
+    .catch((e) => bootMark('splash:hidden-by-module-failsafe', false, e));
+}, MODULE_FAILSAFE_MS);
+
+// -- Audio setup runs fire-and-forget at module level so a hung native bridge
+//    can never stall React boot. The dynamic require also keeps a bad module
+//    from crashing the bundle.
+(async () => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const audio = require('expo-audio');
+    if (audio?.setAudioModeAsync) {
+      await audio.setAudioModeAsync({
+        playsInSilentMode: true,
+        allowsRecording: false,
+        shouldPlayInBackground: false,
+        interruptionMode: 'mixWithOthers',
+      });
+      bootMark('audio:mode-set');
+    } else {
+      bootMark('audio:module-missing', false);
+    }
+  } catch (e) {
+    bootMark('audio:mode-set', false, e);
+  }
+})();
+
+bootMark('layout:module-evaluated');
 
 export default function RootLayout() {
-  const [iconsLoaded, iconsError] = useIconFonts();
+  bootMark('layout:render');
+
+  // Fonts are loaded but we deliberately DO NOT gate render on them. If a
+  // font asset is missing or slow to decode in the production bundle, text
+  // falls back to system fonts rather than hanging the splash forever.
+  // Once fonts finish loading, React Native re-renders the text nodes.
   const [textFontsLoaded, textFontsError] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
@@ -35,53 +81,13 @@ export default function RootLayout() {
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
   });
-
-  // "Real" font readiness (resolved OR errored). System fonts will fall back
-  // automatically if a typeface failed to bundle.
-  const fontsSettled =
-    (iconsLoaded || !!iconsError) && (textFontsLoaded || !!textFontsError);
-
-  // `splashHidden` is the single source of truth for "should we render the
-  // tree?". Flips to true on whichever happens first: fonts are settled, OR
-  // the failsafe timeout fires. Never goes back to false.
-  const [splashHidden, setSplashHidden] = useState(false);
-  const hidRef = useRef(false);
-
-  const hideSplash = () => {
-    if (hidRef.current) return;
-    hidRef.current = true;
-    SplashScreen.hideAsync().catch(() => {});
-    setSplashHidden(true);
-  };
-
+  const [iconsLoaded, iconsError] = useIconFonts();
   useEffect(() => {
-    if (fontsSettled) hideSplash();
-  }, [fontsSettled]);
-
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (__DEV__ && !hidRef.current) {
-        console.log('[boot] splash failsafe fired — proceeding with degraded fonts');
-      }
-      hideSplash();
-    }, SPLASH_FAILSAFE_MS);
-    return () => clearTimeout(t);
-  }, []);
-
-  // Configure audio session ONCE — without this, iOS phones on silent mode
-  // play silently even when expo-audio reports `playing: true`.
-  useEffect(() => {
-    setAudioModeAsync({
-      playsInSilentMode: true,
-      allowsRecording: false,
-      shouldPlayInBackground: false,
-      interruptionMode: 'mixWithOthers',
-    }).catch((e) => {
-      if (__DEV__) console.log('[audio-mode] not applied:', e?.message ?? e);
-    });
-  }, []);
-
-  if (!splashHidden) return null;
+    if (textFontsLoaded) bootMark('fonts:text-loaded');
+    if (textFontsError) bootMark('fonts:text-loaded', false, textFontsError);
+    if (iconsLoaded) bootMark('fonts:icons-loaded');
+    if (iconsError) bootMark('fonts:icons-loaded', false, iconsError);
+  }, [textFontsLoaded, textFontsError, iconsLoaded, iconsError]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#0A0B0A' }}>
@@ -112,8 +118,30 @@ export default function RootLayout() {
             <Stack.Screen name="article/[id]" />
             <Stack.Screen name="diagnostics" />
           </Stack>
+          <BootSealer />
         </RevenueCatProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+/** Seals the current boot trace as "last" once we've made it past first
+ *  render. If the next launch hangs, /diagnostics shows this trace and we
+ *  can see exactly which step never completed. */
+function BootSealer() {
+  useEffect(() => {
+    bootMark('layout:mounted');
+    // Hide the splash as soon as the layout actually mounts — usually well
+    // under the module-level 3s failsafe.
+    SplashScreen.hideAsync()
+      .then(() => bootMark('splash:hidden-by-mount'))
+      .catch(() => {});
+    // Seal a moment later so subsequent provider effects also land in the trace.
+    const t = setTimeout(() => {
+      bootMark('boot:complete');
+      bootSealCurrentAsLast();
+    }, 1500);
+    return () => clearTimeout(t);
+  }, []);
+  return null;
 }

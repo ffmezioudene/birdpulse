@@ -17,6 +17,7 @@ import {
   isRevenueCatConfigured,
 } from '@/src/lib/revenuecat';
 import { isProEffective, getFreeIdentifications, getFreeChats } from '@/src/lib/state';
+import { getLastBootTrace, getCurrentBootTrace, type BootStep } from '@/src/lib/boot-trace';
 
 function present(v: string | undefined | null): 'loaded' | 'missing' {
   return v && v.length > 0 ? 'loaded' : 'missing';
@@ -38,12 +39,16 @@ export default function Diagnostics() {
   const [freeIds, setFreeIds] = useState<number | null>(null);
   const [freeChats, setFreeChats] = useState<number | null>(null);
   const [proEff, setProEff] = useState<boolean | null>(null);
+  const [lastTrace, setLastTrace] = useState<BootStep[] | null>(null);
+  const [currTrace, setCurrTrace] = useState<BootStep[] | null>(null);
 
   useEffect(() => {
     (async () => {
       setFreeIds(await getFreeIdentifications());
       setFreeChats(await getFreeChats());
       setProEff(await isProEffective());
+      setLastTrace(await getLastBootTrace());
+      setCurrTrace(await getCurrentBootTrace());
     })();
   }, [rc.isPro]);
 
@@ -114,6 +119,51 @@ export default function Diagnostics() {
               </View>
             ),
           )}
+
+          <View style={styles.sep} />
+          <Text style={styles.sectionHeader}>Current boot trace</Text>
+          {(currTrace ?? []).length === 0 ? (
+            <Text style={styles.note}>No trace recorded yet.</Text>
+          ) : (
+            (currTrace ?? []).map((s, i) => (
+              <View key={`c${i}`} style={styles.traceRow}>
+                <Text style={styles.traceT}>{`+${s.t}ms`}</Text>
+                <Text
+                  style={[
+                    styles.traceStep,
+                    s.ok === false && { color: colors.danger },
+                  ]}
+                >
+                  {s.step}
+                  {s.err ? `  —  ${s.err}` : ''}
+                </Text>
+              </View>
+            ))
+          )}
+
+          <View style={styles.sep} />
+          <Text style={styles.sectionHeader}>Previous boot trace</Text>
+          <Text style={styles.note}>
+            If the app hung on the splash last time, the LAST step here is the culprit.
+          </Text>
+          {(lastTrace ?? []).length === 0 ? (
+            <Text style={styles.note}>No previous boot recorded.</Text>
+          ) : (
+            (lastTrace ?? []).map((s, i) => (
+              <View key={`l${i}`} style={styles.traceRow}>
+                <Text style={styles.traceT}>{`+${s.t}ms`}</Text>
+                <Text
+                  style={[
+                    styles.traceStep,
+                    s.ok === false && { color: colors.danger },
+                  ]}
+                >
+                  {s.step}
+                  {s.err ? `  —  ${s.err}` : ''}
+                </Text>
+              </View>
+            ))
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -156,4 +206,8 @@ const styles = StyleSheet.create({
   },
   k: { ...type.bodySm, color: colors.textTertiary, flex: 1 },
   v: { ...type.bodySm, color: colors.textPrimary, fontWeight: '600', maxWidth: '55%', textAlign: 'right' },
+  sectionHeader: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700', marginTop: 8, marginBottom: 4 },
+  traceRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 4, gap: 12 },
+  traceT: { ...type.caption, color: colors.textTertiary, width: 70, fontVariant: ['tabular-nums'] },
+  traceStep: { ...type.caption, color: colors.textPrimary, flex: 1 },
 });
