@@ -12,6 +12,7 @@ import { colors, type, spacing, radii } from '@/src/theme';
 import { useRevenueCat } from '@/src/providers/RevenueCatProvider';
 import {
   IS_RC_AVAILABLE,
+  RC_DISABLED,
   RC_ENTITLEMENT,
   RC_OFFERING_ID,
   isRevenueCatConfigured,
@@ -66,6 +67,7 @@ export default function Diagnostics() {
     { label: 'Build profile', value: __DEV__ ? 'development' : 'production' },
     { label: 'Platform', value: `${Platform.OS} ${Platform.Version}` },
     { label: 'Execution env', value: String(Constants.executionEnvironment ?? '—') },
+    { label: 'RC_DISABLED (diag)', value: RC_DISABLED ? 'YES — stubbed' : 'no', ok: RC_DISABLED ? true : undefined },
     { label: '—', value: '' },
     { label: 'Backend URL', value: maskHost(env.EXPO_PUBLIC_BACKEND_URL), ok: !!env.EXPO_PUBLIC_BACKEND_URL },
     { label: 'EXPO_PUBLIC_BACKEND_URL', value: present(env.EXPO_PUBLIC_BACKEND_URL), ok: !!env.EXPO_PUBLIC_BACKEND_URL },

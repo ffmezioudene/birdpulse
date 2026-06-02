@@ -19,8 +19,22 @@ import type {
 // ---- Config ---------------------------------------------------------------
 
 export const RC_ENTITLEMENT =
-  process.env.EXPO_PUBLIC_RC_ENTITLEMENT || 'BirdPulse Pro';
-export const RC_OFFERING_ID = process.env.EXPO_PUBLIC_RC_OFFERING || 'default';
+  (process.env.EXPO_PUBLIC_RC_ENTITLEMENT || 'BirdPulse Pro').trim();
+export const RC_OFFERING_ID = (process.env.EXPO_PUBLIC_RC_OFFERING || 'default').trim();
+
+/**
+ * Build-time kill-switch for the entire RevenueCat JS layer.
+ *
+ *   EXPO_PUBLIC_DISABLE_RC=1  → every JS function below is a no-op, and
+ *   `require('react-native-purchases')` is NEVER called. Use this to ship a
+ *   diagnostic build that proves whether the RC JS layer is the boot-hang
+ *   trigger. NOTE: this does NOT remove the native module from the binary
+ *   (auto-linking happens at the Pod/Gradle level). If a diagnostic build
+ *   with this flag set STILL hangs, the native auto-link is the culprit
+ *   and we'll need to also remove the package from package.json.
+ */
+export const RC_DISABLED =
+  (process.env.EXPO_PUBLIC_DISABLE_RC || '').trim() === '1';
 
 // PaywallResult bridges the imperative `presentPaywall*` return values.
 // We mirror RevenueCat's enum so callers don't need a direct UI import.
@@ -34,19 +48,21 @@ export enum PaywallResult {
 
 // ---- Platform availability ------------------------------------------------
 
-export const IS_RC_AVAILABLE = Platform.OS === 'ios' || Platform.OS === 'android';
+export const IS_RC_AVAILABLE =
+  !RC_DISABLED && (Platform.OS === 'ios' || Platform.OS === 'android');
 
 function getApiKey(): string | null {
+  if (RC_DISABLED) return null;
   // In dev / Expo Go dev-client builds we always use the Test Store key.
   // RevenueCat explicitly forbids Test Store keys in production builds.
   if (__DEV__) {
-    return process.env.EXPO_PUBLIC_RC_TEST_KEY || null;
+    return (process.env.EXPO_PUBLIC_RC_TEST_KEY || '').trim() || null;
   }
   if (Platform.OS === 'ios') {
-    return process.env.EXPO_PUBLIC_RC_IOS_KEY || null;
+    return (process.env.EXPO_PUBLIC_RC_IOS_KEY || '').trim() || null;
   }
   if (Platform.OS === 'android') {
-    return process.env.EXPO_PUBLIC_RC_ANDROID_KEY || null;
+    return (process.env.EXPO_PUBLIC_RC_ANDROID_KEY || '').trim() || null;
   }
   return null;
 }
@@ -95,6 +111,10 @@ let configured = false;
 
 /** Configure the Purchases singleton exactly once. Safe to call repeatedly. */
 export async function configureRevenueCat(): Promise<boolean> {
+  if (RC_DISABLED) {
+    if (__DEV__) console.log('[RC] disabled via EXPO_PUBLIC_DISABLE_RC=1');
+    return false;
+  }
   const Purchases = loadPurchases();
   if (!Purchases) return false;
   if (configured) return true;
