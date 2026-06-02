@@ -72,7 +72,8 @@
           "microphonePermission": "Record bird calls to identify species"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
