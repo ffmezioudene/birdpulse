@@ -3,11 +3,11 @@ import { View, Text, StyleSheet, TouchableOpacity, Platform, Image, ScrollView, 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
 
 import { colors, type, spacing, radii } from '@/src/theme';
 import { Sighting, getSightings } from '@/src/lib/state';
 import { MapView, Marker } from '@/src/components/MapView';
+import { getUserLocation } from '@/src/lib/location';
 
 export default function Hotspots() {
   const router = useRouter();
@@ -20,16 +20,18 @@ export default function Hotspots() {
 
   useEffect(() => {
     loadSightings();
+    // Interactive: the user explicitly entered the Hotspots screen, so we
+    // can show the soft pre-ask + system prompt to fetch real location.
     (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return;
-        const loc = await Location.getCurrentPositionAsync({});
-        setCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-      } catch {}
+      const c = await getUserLocation({ interactive: true });
+      if (c) setCoords({ lat: c.lat, lng: c.lng });
     })();
   }, [loadSightings]);
 
+  // Region precedence:
+  //   1. Real user / picked coordinates → tight city-level zoom
+  //   2. First locally-recorded sighting → its coordinates
+  //   3. Global view (centered at 0,0 with a wide delta). NEVER a US default.
   const region = coords
     ? { latitude: coords.lat, longitude: coords.lng, latitudeDelta: 0.08, longitudeDelta: 0.08 }
     : sightings[0]
@@ -39,7 +41,7 @@ export default function Hotspots() {
           latitudeDelta: 0.08,
           longitudeDelta: 0.08,
         }
-      : { latitude: 40.7128, longitude: -74.006, latitudeDelta: 0.4, longitudeDelta: 0.4 };
+      : { latitude: 20, longitude: 30, latitudeDelta: 140, longitudeDelta: 140 };
 
   return (
     <View style={styles.root} testID="hotspots-screen">

@@ -860,6 +860,91 @@ async def birds_catalog():
     return {"birds": SEED_BIRDS}
 
 
+@api_router.get("/birds/nearby")
+async def birds_nearby(
+    lat: float,
+    lng: float,
+    radius_km: int = 25,
+    days_back: int = 14,
+    limit: int = 30,
+):
+    """Recent eBird observations near (lat,lng).
+
+    Uses eBird's free /v2/data/obs/geo/recent endpoint. Requires
+    EBIRD_API_KEY in backend/.env. Without it, returns an empty list so the
+    frontend can gracefully fall back to its bundled catalog.
+
+    Args:
+      lat / lng       — required coordinates.
+      radius_km       — 1..50 (eBird's hard cap is 50 km).
+      days_back       — 1..30; how recent observations should be.
+      limit           — how many distinct species to return (max 200).
+
+    Returns:
+      { "species": [
+          { "common_name": str, "scientific_name": str, "count": int,
+            "last_seen": iso8601-or-empty, "lat": float, "lng": float } ] }
+    """
+    key = os.environ.get("EBIRD_API_KEY", "").strip()
+    if not key:
+        return {
+            "species": [],
+            "note": "Add a free EBIRD_API_KEY to backend/.env (https://ebird.org/api/keygen) to enable nearby-species data.",
+        }
+
+    radius_km = max(1, min(50, int(radius_km)))
+    days_back = max(1, min(30, int(days_back)))
+    limit = max(1, min(200, int(limit)))
+
+    url = "https://api.ebird.org/v2/data/obs/geo/recent"
+    params = {
+        "lat": f"{lat:.6f}",
+        "lng": f"{lng:.6f}",
+        "dist": radius_km,
+        "back": days_back,
+        "maxResults": limit,
+        "includeProvisional": "true",
+        "hotspot": "false",
+    }
+    headers = {"X-eBirdApiToken": key}
+    try:
+        async with httpx.AsyncClient(timeout=15) as http:
+            r = await http.get(url, params=params, headers=headers)
+            r.raise_for_status()
+            rows = r.json()
+    except Exception as e:
+        logger.warning("eBird nearby failed: %s", e)
+        return {"species": [], "error": "ebird_unavailable"}
+
+    # eBird returns one row per observation. Collapse to one row per species
+    # so the list is useful to a casual user, keeping the most recent timestamp
+    # and summing across observations.
+    by_species: dict[str, dict] = {}
+    for row in rows:
+        sci = (row.get("sciName") or "").strip()
+        if not sci:
+            continue
+        bucket = by_species.setdefault(
+            sci,
+            {
+                "common_name": row.get("comName") or sci,
+                "scientific_name": sci,
+                "count": 0,
+                "last_seen": row.get("obsDt") or "",
+                "lat": row.get("lat"),
+                "lng": row.get("lng"),
+            },
+        )
+        try:
+            bucket["count"] += int(row.get("howMany") or 1)
+        except Exception:
+            bucket["count"] += 1
+        if (row.get("obsDt") or "") > bucket["last_seen"]:
+            bucket["last_seen"] = row.get("obsDt") or bucket["last_seen"]
+    species = sorted(by_species.values(), key=lambda x: (-x["count"], x["last_seen"]))[:limit]
+    return {"species": species}
+
+
 @api_router.get("/birds/{bird_id}")
 async def bird_detail(bird_id: str):
     for b in SEED_BIRDS:

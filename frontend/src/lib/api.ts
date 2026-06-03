@@ -230,3 +230,30 @@ export async function fetchCatalog() {
 export async function fetchBird(id: string) {
   return jsonFetch<CatalogBird>(`/api/birds/${id}`);
 }
+
+export type NearbySpecies = {
+  common_name: string;
+  scientific_name: string;
+  count: number;
+  last_seen: string;
+  lat?: number;
+  lng?: number;
+};
+
+export async function fetchBirdsNearby(
+  lat: number,
+  lng: number,
+  opts: { radiusKm?: number; daysBack?: number; limit?: number } = {},
+) {
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lng: String(lng),
+    radius_km: String(opts.radiusKm ?? 25),
+    days_back: String(opts.daysBack ?? 14),
+    limit: String(opts.limit ?? 30),
+  });
+  return jsonFetch<{ species: NearbySpecies[]; note?: string; error?: string }>(
+    `/api/birds/nearby?${params.toString()}`,
+  );
+}
+
