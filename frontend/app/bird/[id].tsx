@@ -40,10 +40,9 @@ type TabKey = 'photos' | 'description' | 'sounds' | 'range';
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 /**
- * Per-month seasonality copy. We don't have per-species monthly range data
- * (would require eBird Status & Trends), so we generate context-aware tips
- * based on the bird's family / migration status + the calendar season for the
- * selected month.
+ * Per-month seasonality copy. We don't bundle per-species monthly range
+ * data, so we generate context-aware tips based on the bird's family /
+ * migration status + the calendar season for the selected month.
  */
 function monthMessage(
   monthIdx: number,
