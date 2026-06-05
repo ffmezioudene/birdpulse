@@ -64,13 +64,13 @@ These were added to the repo this round — they ship with your next push:
    |---|---|---|
    | `MONGO_URL` | the Atlas connection string from §1.6 | required |
    | `DB_NAME` | `birdpulse_prod` | any name; Atlas creates it on first write |
-   | `EMERGENT_LLM_KEY` | (your existing value) | fallback for LLM calls |
-   | `OPENAI_API_KEY` | (your own OpenAI key, if you have one) | optional; preferred over EMERGENT_LLM_KEY when present |
+   | `OPENAI_API_KEY` | your OpenAI key (the one you already have in `backend/.env`) | **required** — the production backend uses the official `openai` SDK directly (no Emergent router in prod) |
    | `PERCH_MODAL_URL` | your Modal Perch endpoint URL | required for Sound ID |
    | `PERCH_SHARED_SECRET` | the shared secret you set in Modal | required for Sound ID |
    | `XENO_CANTO_KEY` | (your existing value, if any) | optional |
    | `CORS_ORIGINS` | `*` | safe — backend has no cookie auth |
    | `PERCH_KEEPWARM_INTERVAL_S` | `300` | optional override (default 5 min) |
+   | `EMERGENT_LLM_KEY` | *(omit from Railway)* | unused in production. The shim hits OpenAI directly. Only the local dev backend in the Emergent IDE uses this. |
 
    **Do NOT set `PORT`** — Railway injects it automatically.
 7. Trigger a redeploy (push a commit, or **Deploy → Redeploy**). Wait ~2 min.

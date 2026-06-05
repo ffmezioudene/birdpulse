@@ -20,11 +20,10 @@ from typing import List, Optional, Dict, Any
 from collections import deque
 from datetime import datetime, timezone
 
-from emergentintegrations.llm.chat import (
+from llm_shim import (
     LlmChat,
     UserMessage,
     ImageContent,
-    FileContentWithMimeType,
 )
 
 
@@ -57,13 +56,7 @@ CACHE_TTL_S = 90 * 24 * 3600
 
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 LLM_KEY = OPENAI_API_KEY or EMERGENT_LLM_KEY
-
-# Gemini-specific key resolver. User's own Google AI Studio key takes precedence
-# if set; otherwise we use the Emergent Universal Key (which supports Gemini).
-# An OpenAI key here would obviously not work on Gemini, so we never fall back to it.
-GEMINI_KEY = GEMINI_API_KEY or EMERGENT_LLM_KEY
 
 # Perch 2.0 Sound ID — Modal-hosted service.
 PERCH_MODAL_URL = os.environ.get("PERCH_MODAL_URL", "")
@@ -114,49 +107,10 @@ class IdentifyResult(BaseModel):
 
 
 class GeminiSoundRequest(BaseModel):
-    audio_base64: str                       # raw base64, no data: prefix needed
-    mime_type: str = "audio/mp4"            # m4a/aac default from expo-audio
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    month: Optional[str] = None             # e.g. "May"
-    model: Optional[str] = "gemini-2.5-flash"
-
-
-class GeminiSoundFromUrlRequest(BaseModel):
-    """Test-only helper: server fetches the audio URL itself (e.g. Xeno-canto)
-    so we can run accuracy benchmarks against known recordings without round-
-    tripping a base64 payload through curl."""
-    audio_url: str
-    mime_type: Optional[str] = None         # inferred from URL extension if omitted
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    month: Optional[str] = None
-    model: Optional[str] = "gemini-2.5-flash"
-
-
-class SoundAlternative(BaseModel):
-    commonName: str
-    scientificName: str = ""
-    confidence: int = 0
-
-
-class GeminiSoundResult(BaseModel):
-    commonName: str
-    scientificName: str
-    confidence: int
-    alternatives: List[SoundAlternative] = []
-    shortDescription: str = ""
-    uncertain: bool = False
-    model: str = ""
-    # Round-out so the frontend's existing IdentifyResult renderer keeps working.
-    habitat: str = ""
-    diet: str = ""
-    size: str = ""
-    funFacts: List[str] = []
-    rangeSummary: str = ""
-    conservationStatus: str = ""
-    genus: str = ""
-    family: str = ""
+    """[DEPRECATED in v1] Kept as a stub so any old client cannot crash at
+    import time. The Gemini Sound ID endpoints have been removed — use
+    /api/identify/sound-perch instead."""
+    audio_base64: str = ""
     order: str = ""
     wingspan: str = ""
     wingShape: str = ""
@@ -403,40 +357,7 @@ async def identify_sound(req: IdentifyPhotoRequest):
     return IdentifyResult(**data)
 
 
-# ---------------------------- Gemini native audio Sound ID ----------------
-
-GEMINI_SOUND_SYSTEM_PROMPT = (
-    "You are an expert ornithologist with decades of experience identifying bird "
-    "vocalizations by ear. You will be given an audio recording of a wild bird. "
-    "Listen carefully to the audio's full content: the song or call, its pitch "
-    "pattern, rhythm, timbre, duration, and any background ambience. Identify the "
-    "single most likely species. If multiple species are plausible, give the best "
-    "guess first and 2-3 alternatives. When location and month are provided, "
-    "STRONGLY weight your answer toward species that are realistically present at "
-    "that latitude/longitude in that month — eBird-style. Never invent a species. "
-    "Respond with valid JSON ONLY, no markdown, exactly matching the schema in the "
-    "user message."
-)
-
-GEMINI_SOUND_USER_PROMPT = (
-    "Identify the bird in this audio clip. {context_line}"
-    "Respond ONLY with valid JSON (no markdown fences, no prose) in this exact "
-    "shape:\n"
-    "{{\n"
-    '  "primary": {{ "commonName": "...", "scientificName": "...", "confidence": 0-100 }},\n'
-    '  "alternatives": [\n'
-    '    {{ "commonName": "...", "scientificName": "...", "confidence": 0-100 }},\n'
-    '    {{ "commonName": "...", "scientificName": "...", "confidence": 0-100 }}\n'
-    "  ],\n"
-    '  "description": "one or two sentences about this call/song and the bird",\n'
-    '  "uncertain": true/false\n'
-    "}}\n"
-    "Always provide best-guess alternatives even when uncertain — never an empty "
-    "list. If the clip contains no identifiable bird (silence, human speech, "
-    "machine noise), set commonName='Unknown', confidence=0, uncertain=true, and "
-    "explain briefly in description."
-)
-
+# ---------------------------- Audio MIME map (used by Perch endpoints) ----
 
 _AUDIO_MIME_BY_EXT = {
     ".mp3": "audio/mp3",
@@ -449,202 +370,6 @@ _AUDIO_MIME_BY_EXT = {
     ".oga": "audio/ogg",
 }
 
-_EXT_BY_MIME = {v: k for k, v in _AUDIO_MIME_BY_EXT.items()}
-
-
-def _build_sound_context_line(lat: Optional[float], lng: Optional[float], month: Optional[str]) -> str:
-    bits = []
-    if lat is not None and lng is not None:
-        bits.append(f"The recording was made near latitude {lat:.3f}, longitude {lng:.3f}.")
-    if month:
-        bits.append(f"The recording was made in {month}.")
-    if not bits:
-        return ""
-    return " ".join(bits) + " Favor species realistically present at that location and season. "
-
-
-async def _gemini_identify_audio(
-    audio_path: str,
-    mime_type: str,
-    model: str,
-    latitude: Optional[float],
-    longitude: Optional[float],
-    month: Optional[str],
-) -> Dict[str, Any]:
-    """Send a local audio file to Gemini and return parsed JSON."""
-    if not GEMINI_KEY:
-        raise HTTPException(status_code=500, detail="Gemini key not configured")
-
-    session_id = f"sound-gemini-{uuid.uuid4()}"
-    chat = (
-        LlmChat(
-            api_key=GEMINI_KEY,
-            session_id=session_id,
-            system_message=GEMINI_SOUND_SYSTEM_PROMPT,
-        )
-        .with_model("gemini", model)
-    )
-
-    audio_attachment = FileContentWithMimeType(
-        file_path=audio_path,
-        mime_type=mime_type,
-    )
-    context_line = _build_sound_context_line(latitude, longitude, month)
-    user_text = GEMINI_SOUND_USER_PROMPT.format(context_line=context_line)
-    user_message = UserMessage(text=user_text, file_contents=[audio_attachment])
-
-    try:
-        raw = await chat.send_message(user_message)
-    except Exception as e:
-        logger.exception("Gemini sound ID failed")
-        raise HTTPException(status_code=502, detail=f"Gemini error: {e}")
-
-    try:
-        return _extract_json(raw)
-    except Exception:
-        logger.warning("Gemini returned non-JSON. Raw=%s", (raw or "")[:400])
-        raise HTTPException(status_code=502, detail="Gemini did not return valid JSON")
-
-
-def _normalize_gemini_payload(data: Dict[str, Any], model_used: str) -> GeminiSoundResult:
-    primary = data.get("primary") or {}
-    alts_raw = data.get("alternatives") or []
-    alts: List[SoundAlternative] = []
-    for a in alts_raw:
-        if not isinstance(a, dict):
-            continue
-        try:
-            conf = int(round(float(a.get("confidence", 0))))
-        except Exception:
-            conf = 0
-        alts.append(
-            SoundAlternative(
-                commonName=str(a.get("commonName") or "").strip(),
-                scientificName=str(a.get("scientificName") or "").strip(),
-                confidence=max(0, min(100, conf)),
-            )
-        )
-
-    try:
-        primary_conf = int(round(float(primary.get("confidence", 0))))
-    except Exception:
-        primary_conf = 0
-
-    return GeminiSoundResult(
-        commonName=str(primary.get("commonName") or "Unknown").strip(),
-        scientificName=str(primary.get("scientificName") or "").strip(),
-        confidence=max(0, min(100, primary_conf)),
-        alternatives=alts,
-        shortDescription=str(data.get("description") or "").strip(),
-        uncertain=bool(data.get("uncertain", False)),
-        model=model_used,
-    )
-
-
-@api_router.post("/identify/sound-gemini", response_model=GeminiSoundResult)
-async def identify_sound_gemini(req: GeminiSoundRequest):
-    """Native-audio Sound ID via Gemini. Accepts base64 audio (m4a/mp3/wav/aac).
-
-    Sends the actual audio file to Gemini (no spectrogram intermediate), with
-    optional lat/lng/month context for season-aware species ranking.
-    """
-    b64 = _strip_b64_prefix(req.audio_base64)
-    if not b64:
-        raise HTTPException(status_code=400, detail="audio_base64 is required")
-
-    try:
-        audio_bytes = base64.b64decode(b64)
-    except Exception:
-        raise HTTPException(status_code=400, detail="audio_base64 is not valid base64")
-
-    if len(audio_bytes) < 200:
-        raise HTTPException(status_code=400, detail="audio payload too small")
-
-    mime = (req.mime_type or "audio/mp4").strip().lower()
-    ext = _EXT_BY_MIME.get(mime, ".m4a")
-    model = (req.model or "gemini-2.5-flash").strip()
-
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tf:
-        tf.write(audio_bytes)
-        tmp_path = tf.name
-
-    try:
-        data = await _gemini_identify_audio(
-            tmp_path, mime, model, req.latitude, req.longitude, req.month
-        )
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-
-    result = _normalize_gemini_payload(data, model)
-
-    # Log to history for debugging.
-    try:
-        await db.identifications.insert_one(
-            {
-                "id": str(uuid.uuid4()),
-                "type": "sound-gemini",
-                "model": model,
-                "context": {"lat": req.latitude, "lng": req.longitude, "month": req.month},
-                "result": result.model_dump(),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-        )
-    except Exception:
-        pass
-
-    return result
-
-
-@api_router.post("/identify/sound-gemini-from-url", response_model=GeminiSoundResult)
-async def identify_sound_gemini_from_url(req: GeminiSoundFromUrlRequest):
-    """Test-only helper. Downloads the audio URL (e.g. Xeno-canto), then runs
-    the same Gemini pipeline as `/identify/sound-gemini`. Used for accuracy
-    benchmarks; safe to leave enabled — it's just a server-side fetch + the
-    normal LLM call."""
-    if not req.audio_url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="audio_url must be http(s)")
-
-    # Guess mime/extension from URL if not supplied.
-    url_lower = req.audio_url.lower().split("?")[0]
-    guessed_ext = ".mp3"
-    for e in _AUDIO_MIME_BY_EXT:
-        if url_lower.endswith(e):
-            guessed_ext = e
-            break
-    mime = (req.mime_type or _AUDIO_MIME_BY_EXT.get(guessed_ext, "audio/mp3")).lower()
-
-    headers = {
-        "User-Agent": "BirdPulseApp/1.0 (https://birdpulse.app; contact@birdpulse.app)",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as http:
-            r = await http.get(req.audio_url)
-            r.raise_for_status()
-            audio_bytes = r.content
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not fetch audio: {e}")
-
-    if len(audio_bytes) < 200:
-        raise HTTPException(status_code=502, detail="downloaded audio too small")
-
-    model = (req.model or "gemini-2.5-flash").strip()
-    with tempfile.NamedTemporaryFile(suffix=guessed_ext, delete=False) as tf:
-        tf.write(audio_bytes)
-        tmp_path = tf.name
-    try:
-        data = await _gemini_identify_audio(
-            tmp_path, mime, model, req.latitude, req.longitude, req.month
-        )
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-
-    return _normalize_gemini_payload(data, model)
 
 
 # ---------------------------- Perch 2.0 Sound ID (Modal-hosted) -----------

@@ -1,27 +1,28 @@
+# Runtime dependencies. Everything here is on public PyPI — no private
+# package indexes required. Plain `pip install -r requirements.txt` works
+# on Railway, Render, Fly, Heroku, or any vanilla Python 3.11 image.
+#
+# Audit (what each one is actually used for):
+#   fastapi           — web framework
+#   uvicorn           — ASGI server (Dockerfile CMD)
+#   python-dotenv     — load backend/.env in local dev
+#   motor             — async MongoDB driver
+#   pydantic          — request/response models
+#   python-multipart  — required by FastAPI for any multipart/form-data
+#   httpx             — Wikipedia / Xeno-canto / Modal Perch outbound calls
+#   openai            — OpenAI SDK used by llm_shim.py (Photo ID, enrich, chat)
+#
+# Dev-only tooling (pytest, black, isort, flake8, mypy) lives in
+# requirements-dev.txt and is NOT installed in the production image.
+
 fastapi==0.110.1
 uvicorn==0.25.0
-boto3>=1.34.129
-requests-oauthlib>=2.0.0
-cryptography>=42.0.8
 python-dotenv>=1.0.1
-pymongo==4.5.0
-pydantic>=2.6.4
-email-validator>=2.2.0
-pyjwt>=2.10.1
-bcrypt==4.1.3
-passlib>=1.7.4
-tzdata>=2024.2
 motor==3.3.1
-pytest>=8.0.0
-black>=24.1.1
-isort>=5.13.2
-flake8>=7.0.0
-mypy>=1.8.0
-python-jose>=3.3.0
-requests>=2.31.0
-pandas>=2.2.0
-numpy>=1.26.0
+# pymongo is a transitive dep of motor; latest (4.7+) dropped private
+# symbols that motor 3.3.1 still imports. Pin to a known-compatible range.
+pymongo>=4.5.0,<4.7
+pydantic>=2.6.4
 python-multipart>=0.0.9
-jq>=1.6.0
-typer>=0.9.0
-emergentintegrations==0.1.0
+httpx>=0.27.0
+openai>=1.50.0
