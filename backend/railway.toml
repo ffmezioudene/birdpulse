@@ -1,11 +1,11 @@
 # Railway service config. Auto-detected when this file is present at the
-# service root. Tells Railway to build via Dockerfile and run via the CMD.
-# Override the start command here if you need to switch to multiple
-# workers later (e.g. `uvicorn server:app --workers 2 --host 0.0.0.0 --port $PORT`).
+# service root. With Root Directory = `backend` in the Railway UI, this
+# file lives at backend/railway.toml and all paths below are relative to
+# `backend/`.
 
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "backend/Dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 # Railway maps $PORT to the public-facing port. Health check lets Railway

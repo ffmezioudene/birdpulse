@@ -1,8 +1,13 @@
 # BirdPulse FastAPI backend image — used by Railway / Render / Fly / any
-# container host. Build context is the repo root with /backend as the source.
+# container host.
 #
-# Build:    docker build -t birdpulse-api -f backend/Dockerfile .
-# Run:      docker run -p 8001:8001 --env-file backend/.env birdpulse-api
+# Build context: the `backend/` folder (NOT the repo root).
+# This matches Railway when "Root Directory" is set to `backend`.
+#
+# Build locally (from inside backend/):
+#     docker build -t birdpulse-api .
+# Run locally:
+#     docker run -p 8001:8001 --env-file .env birdpulse-api
 
 FROM python:3.11-slim
 
@@ -18,16 +23,15 @@ RUN apt-get update \
 WORKDIR /app
 
 # Install python deps first (better Docker layer caching when only code changes).
-COPY backend/requirements.txt /app/backend/requirements.txt
+COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r /app/backend/requirements.txt
+    && pip install --no-cache-dir -r /app/requirements.txt
 
-# Copy backend source.
-COPY backend /app/backend
+# Copy backend source (current directory == backend/).
+COPY . /app
 
 # Railway / Render inject $PORT; default to 8001 for local docker run.
 ENV PORT=8001
 EXPOSE 8001
 
-WORKDIR /app/backend
 CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8001} --proxy-headers --forwarded-allow-ips=*"]
