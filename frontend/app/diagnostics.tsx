@@ -19,6 +19,12 @@ import {
 } from '@/src/lib/revenuecat';
 import { isProEffective, getFreeIdentifications, getFreeChats } from '@/src/lib/state';
 import { getLastBootTrace, getCurrentBootTrace, type BootStep } from '@/src/lib/boot-trace';
+import {
+  fetchBackendHealth,
+  fetchBackendLatencies,
+  type BackendHealth,
+  type LatencyRow,
+} from '@/src/lib/api';
 
 function present(v: string | undefined | null): 'loaded' | 'missing' {
   return v && v.length > 0 ? 'loaded' : 'missing';
@@ -42,6 +48,9 @@ export default function Diagnostics() {
   const [proEff, setProEff] = useState<boolean | null>(null);
   const [lastTrace, setLastTrace] = useState<BootStep[] | null>(null);
   const [currTrace, setCurrTrace] = useState<BootStep[] | null>(null);
+  const [health, setHealth] = useState<BackendHealth | null>(null);
+  const [healthMs, setHealthMs] = useState<number | null>(null);
+  const [latencies, setLatencies] = useState<{ avg_ms: number; items: LatencyRow[] } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -50,6 +59,12 @@ export default function Diagnostics() {
       setProEff(await isProEffective());
       setLastTrace(await getLastBootTrace());
       setCurrTrace(await getCurrentBootTrace());
+      const t0 = Date.now();
+      const h = await fetchBackendHealth();
+      setHealth(h);
+      setHealthMs(Date.now() - t0);
+      const l = await fetchBackendLatencies();
+      if (l) setLatencies({ avg_ms: l.avg_ms, items: l.items.slice(0, 5) });
     })();
   }, [rc.isPro]);
 
@@ -120,6 +135,77 @@ export default function Diagnostics() {
                 </Text>
               </View>
             ),
+          )}
+
+          <View style={styles.sep} />
+          <Text style={styles.sectionHeader}>Backend health</Text>
+          <View style={styles.row}>
+            <Text style={styles.k}>Status</Text>
+            <Text
+              style={[
+                styles.v,
+                health?.status === 'ok' && { color: colors.primary },
+                (!health || health.status !== 'ok') && { color: colors.danger },
+              ]}
+            >
+              {health?.status ?? 'unreachable'}
+            </Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.k}>Mongo</Text>
+            <Text style={styles.v}>{health?.mongo ?? '—'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.k}>LLM key</Text>
+            <Text style={styles.v}>{health?.has_llm_key ? 'present' : 'missing'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.k}>Perch configured</Text>
+            <Text style={styles.v}>{health?.perch_configured ? 'yes' : 'no'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.k}>Enrichment cache</Text>
+            <Text style={styles.v}>
+              {health?.enrich_cache_size != null ? `${health.enrich_cache_size} species` : '—'}
+            </Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.k}>Wiki cache</Text>
+            <Text style={styles.v}>
+              {health?.wiki_cache_size != null ? `${health.wiki_cache_size} titles` : '—'}
+            </Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.k}>Roundtrip</Text>
+            <Text style={styles.v}>{healthMs != null ? `${healthMs} ms` : '…'}</Text>
+          </View>
+
+          <View style={styles.sep} />
+          <Text style={styles.sectionHeader}>Last 5 API calls</Text>
+          {latencies && latencies.items.length > 0 ? (
+            <>
+              <View style={styles.row}>
+                <Text style={styles.k}>Avg (last 20)</Text>
+                <Text style={styles.v}>{latencies.avg_ms} ms</Text>
+              </View>
+              {latencies.items.map((it, i) => (
+                <View key={`lat-${i}`} style={styles.traceRow}>
+                  <Text style={styles.traceT}>{`${it.ms}ms`}</Text>
+                  <Text
+                    style={[
+                      styles.traceStep,
+                      it.status >= 500 && { color: colors.danger },
+                      it.status >= 400 && it.status < 500 && { color: colors.textSecondary },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {`${it.method} ${it.path}  [${it.status}]`}
+                  </Text>
+                </View>
+              ))}
+            </>
+          ) : (
+            <Text style={styles.note}>No backend traffic yet.</Text>
           )}
 
           <View style={styles.sep} />

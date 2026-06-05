@@ -257,3 +257,52 @@ export async function fetchBirdsNearby(
   );
 }
 
+/* ---------- Backend health + diagnostics ---------- */
+
+export type BackendHealth = {
+  status: 'ok' | 'degraded' | string;
+  service?: string;
+  has_llm_key?: boolean;
+  mongo?: string;
+  perch_configured?: boolean;
+  enrich_cache_size?: number;
+  wiki_cache_size?: number;
+  check_ms?: number;
+};
+
+/** Quick check that the production backend is alive. Uses a 6 s timeout
+ *  so the boot screen never hangs on a dead host. */
+export async function fetchBackendHealth(timeoutMs = 6000): Promise<BackendHealth | null> {
+  if (!BASE) return null;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const r = await fetch(`${BASE}/api/health`, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!r.ok) return { status: 'degraded', check_ms: timeoutMs };
+    return (await r.json()) as BackendHealth;
+  } catch {
+    return null; // unreachable
+  }
+}
+
+export type LatencyRow = {
+  ts: number;
+  path: string;
+  method: string;
+  status: number;
+  ms: number;
+};
+
+export async function fetchBackendLatencies(): Promise<{ count: number; avg_ms: number; items: LatencyRow[] } | null> {
+  if (!BASE) return null;
+  try {
+    const r = await fetch(`${BASE}/api/diag/latencies`);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+

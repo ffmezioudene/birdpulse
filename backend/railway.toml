@@ -1,0 +1,19 @@
+# Railway service config. Auto-detected when this file is present at the
+# service root. Tells Railway to build via Dockerfile and run via the CMD.
+# Override the start command here if you need to switch to multiple
+# workers later (e.g. `uvicorn server:app --workers 2 --host 0.0.0.0 --port $PORT`).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+# Railway maps $PORT to the public-facing port. Health check lets Railway
+# mark the deploy "succeeded" only after FastAPI is actually serving traffic.
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+# Keep one instance always-on. With the Hobby plan and no scale-to-zero
+# this is what real users need — no cold-start latency on first request.
+numReplicas = 1

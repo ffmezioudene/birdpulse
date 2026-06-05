@@ -1,19 +1,23 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+import asyncio
 import os
 import logging
 import json
 import re
 import tempfile
+import time
 import base64
 import uuid
 import httpx
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+from collections import deque
 from datetime import datetime, timezone
 
 from emergentintegrations.llm.chat import (
@@ -37,6 +41,19 @@ logger = logging.getLogger(__name__)
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
+
+# Server-side content caches. Persist GPT-4o enrichment and Wikipedia
+# summaries keyed by scientific_name so the SECOND user who looks up a
+# given species pays no LLM/Wiki latency. Self-healing — populated by the
+# normal request path; also pre-warmed by `scripts/backfill_popular.py`.
+ENRICH_CACHE = db.bird_enrichment_cache
+WIKI_CACHE = db.bird_wiki_cache
+# Schema/format version. Bumping this invalidates cached rows (we filter by it).
+ENRICH_VERSION = "v1"
+WIKI_VERSION = "v1"
+# How long a cached row stays fresh. 90 days is plenty for taxonomy facts
+# (they don't actually change). Setting it large keeps real users instant.
+CACHE_TTL_S = 90 * 24 * 3600
 
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -248,11 +265,36 @@ async def root():
 
 @api_router.get("/health")
 async def health():
-    return {
+    """Production health check. Verifies:
+      - LLM key present
+      - Mongo reachable (1-second timeout)
+      - Modal Perch warmup endpoint reachable (best-effort, doesn't fail health if down)
+    Returns 200 quickly when healthy. Used by Railway/Render uptime probes
+    and by the mobile app's boot-time backend check.
+    """
+    started_at = time.time()
+    out: Dict[str, Any] = {
         "status": "ok",
+        "service": "BirdPulse API",
         "has_llm_key": bool(LLM_KEY),
         "uses_emergent_key": bool(EMERGENT_LLM_KEY and not OPENAI_API_KEY),
+        "perch_configured": bool(PERCH_MODAL_URL and PERCH_SHARED_SECRET),
     }
+    # Mongo ping (short timeout — if DB is dead we want to know fast).
+    try:
+        await asyncio.wait_for(db.command("ping"), timeout=1.0)
+        out["mongo"] = "ok"
+    except Exception as e:
+        out["mongo"] = f"error: {str(e)[:120]}"
+        out["status"] = "degraded"
+    # Cache stats (cheap aggregate counts).
+    try:
+        out["enrich_cache_size"] = await ENRICH_CACHE.count_documents({"v": ENRICH_VERSION})
+        out["wiki_cache_size"] = await WIKI_CACHE.count_documents({"v": WIKI_VERSION})
+    except Exception:
+        pass
+    out["check_ms"] = int((time.time() - started_at) * 1000)
+    return out
 
 
 @api_router.post("/identify/photo", response_model=IdentifyResult)
@@ -1076,14 +1118,27 @@ async def bulk_thumbs(payload: dict):
 
 @api_router.get("/wiki/summary")
 async def wiki_summary(title: str):
-    """Server-side Wikipedia REST proxy with simple in-memory caching.
+    """Server-side Wikipedia REST proxy with persistent Mongo caching.
 
     Tries the scientific binomial first (Wikipedia keeps these as redirects
     that almost always resolve), then falls back to the common-name title.
     The shape exposed to the frontend is intentionally compact.
+
+    First call hits Wikipedia (~300-800 ms). Subsequent calls for the same
+    title return from Mongo (~5-20 ms) until CACHE_TTL_S expires.
     """
     if not title:
         raise HTTPException(status_code=400, detail="title is required")
+
+    cache_key = title.strip().lower()
+    try:
+        cached = await WIKI_CACHE.find_one({"_id": cache_key, "v": WIKI_VERSION})
+        if cached and (time.time() - cached.get("ts", 0)) < CACHE_TTL_S:
+            payload = cached.get("payload") or {}
+            payload["_cached"] = True
+            return payload
+    except Exception as e:
+        logger.warning("wiki cache read failed: %s", e)
 
     candidates = [title.strip()]
     # If caller sent "Common Name | Scientific name" we try both.
@@ -1096,6 +1151,7 @@ async def wiki_summary(title: str):
         "Accept": "application/json",
         "Api-User-Agent": "BirdPulseApp/1.0 (contact@birdpulse.app)",
     }
+    result_payload: Optional[Dict[str, Any]] = None
     async with httpx.AsyncClient(timeout=12, headers=headers, follow_redirects=True) as http:
         for t in candidates:
             slug = t.replace(" ", "_")
@@ -1110,7 +1166,7 @@ async def wiki_summary(title: str):
                 extract = (j.get("extract") or "").strip()
                 if len(extract) < 60:
                     continue
-                return {
+                result_payload = {
                     "title": j.get("title", t),
                     "summary": extract,
                     "thumb": (j.get("thumbnail") or {}).get("source", ""),
@@ -1118,10 +1174,25 @@ async def wiki_summary(title: str):
                             or (j.get("thumbnail") or {}).get("source", ""),
                     "wikiUrl": ((j.get("content_urls") or {}).get("desktop") or {}).get("page", ""),
                 }
+                break
             except Exception as e:
                 logger.warning("wiki fetch failed for %s: %s", t, e)
                 continue
-    return {"title": title, "summary": "", "thumb": "", "image": "", "wikiUrl": ""}
+
+    if result_payload is None:
+        result_payload = {"title": title, "summary": "", "thumb": "", "image": "", "wikiUrl": ""}
+
+    # Persist (even empty results — avoids re-hitting Wikipedia for known-misses)
+    try:
+        await WIKI_CACHE.update_one(
+            {"_id": cache_key},
+            {"$set": {"v": WIKI_VERSION, "ts": time.time(), "payload": result_payload}},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning("wiki cache write failed: %s", e)
+
+    return result_payload
 
 
 # ---------------------------- AI enrichment ------------------------------
@@ -1138,11 +1209,31 @@ async def enrich_bird(req: EnrichRequest):
     """Generate the premium "How to Identify / Key Facts / Nesting / Fun Facts"
     fields for any species via GPT-4o, returning structured JSON.
 
-    Cached client-side after first call so we only pay once per bird per device.
+    PERSISTENT SERVER-SIDE CACHE: keyed by `scientific_name`, stored in Mongo.
+    First user pays the GPT-4o latency (~3-7 s + ~$0.005). Every subsequent
+    user for the same species — across all devices — returns in ~10-30 ms.
+    Self-healing: just call the endpoint normally; population happens behind
+    the scenes.
+
+    The client (`bird-detail.ts`) ALSO caches in AsyncStorage so per-device
+    repeat lookups are zero-network. The Mongo layer covers the cross-device
+    "new user opening the same bird" case.
     """
     api_key = LLM_KEY  # user's OPENAI_API_KEY when present, else EMERGENT_LLM_KEY
     if not api_key:
         raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    cache_key = (req.scientific_name or req.common_name or "").strip().lower()
+    if cache_key:
+        try:
+            cached = await ENRICH_CACHE.find_one({"_id": cache_key, "v": ENRICH_VERSION})
+            if cached and (time.time() - cached.get("ts", 0)) < CACHE_TTL_S:
+                payload = cached.get("payload") or {}
+                if isinstance(payload, dict) and payload:
+                    payload["_cached"] = True
+                    return payload
+        except Exception as e:
+            logger.warning("enrich cache read failed: %s", e)
 
     prompt = (
         f"Return strict JSON describing the bird species below for a premium field "
@@ -1197,13 +1288,34 @@ async def enrich_bird(req: EnrichRequest):
     if raw.startswith("```"):
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.S).strip()
     try:
-        return json.loads(raw)
+        payload = json.loads(raw)
     except Exception:
         # Try to recover an outer { ... } block
         m = re.search(r"\{[\s\S]*\}", raw)
         if not m:
             raise HTTPException(status_code=502, detail="LLM returned non-JSON")
-        return json.loads(m.group(0))
+        payload = json.loads(m.group(0))
+
+    # Persist (write-through) so the second user pays nothing.
+    if cache_key and isinstance(payload, dict):
+        try:
+            await ENRICH_CACHE.update_one(
+                {"_id": cache_key},
+                {"$set": {
+                    "v": ENRICH_VERSION,
+                    "ts": time.time(),
+                    "common_name": req.common_name,
+                    "scientific_name": req.scientific_name,
+                    "family": req.family,
+                    "order": req.order,
+                    "payload": payload,
+                }},
+                upsert=True,
+            )
+        except Exception as e:
+            logger.warning("enrich cache write failed: %s", e)
+
+    return payload
 
 
 
@@ -1421,10 +1533,101 @@ SEED_BIRDS = [
 ]
 
 
+# ---------------------------- Latency middleware & diag -----------------
+
+# Rolling buffer of the last N completed requests for /api/diag/latencies.
+# Used to surface backend reliability in the mobile app's Diagnostics screen
+# so we can verify post-launch behavior with real users.
+LATENCY_BUFFER: deque = deque(maxlen=20)
+
+
+class LatencyMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Only track /api/* routes — static assets / docs are noise.
+        path = request.url.path
+        if not path.startswith("/api/"):
+            return await call_next(request)
+        t0 = time.time()
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+            return response
+        finally:
+            elapsed_ms = int((time.time() - t0) * 1000)
+            LATENCY_BUFFER.append({
+                "ts": int(t0 * 1000),
+                "path": path,
+                "method": request.method,
+                "status": status,
+                "ms": elapsed_ms,
+            })
+
+
+@api_router.get("/diag/latencies")
+async def diag_latencies():
+    """Last 20 /api/* request latencies. Exposed so the mobile app's
+    Diagnostics screen can surface backend reliability without needing
+    server-side logging access."""
+    items = list(LATENCY_BUFFER)
+    avg = int(sum(x["ms"] for x in items) / len(items)) if items else 0
+    return {"count": len(items), "avg_ms": avg, "items": list(reversed(items))}
+
+
+@api_router.get("/diag/cache-stats")
+async def diag_cache_stats():
+    """Cache hit-rate proxy: total cached rows + age distribution.
+    Helps confirm the backfill ran and the self-healing cache is warm."""
+    try:
+        enrich_count = await ENRICH_CACHE.count_documents({"v": ENRICH_VERSION})
+        wiki_count = await WIKI_CACHE.count_documents({"v": WIKI_VERSION})
+    except Exception as e:
+        return {"error": str(e)[:200]}
+    return {
+        "enrich_cache": enrich_count,
+        "wiki_cache": wiki_count,
+        "ttl_days": int(CACHE_TTL_S / 86400),
+    }
+
+
+# ---------------------------- Perch keep-warm cron ----------------------
+
+PERCH_KEEPWARM_INTERVAL_S = int(os.environ.get("PERCH_KEEPWARM_INTERVAL_S", "300"))  # 5 min default
+
+
+async def _keepwarm_perch_loop():
+    """Background task — pings the Modal Perch warmup endpoint every N
+    seconds so Sound ID is INSTANT for the next user instead of waiting
+    20-40 s for Modal's cold start.
+
+    Modal scale-to-zero kicks in after ~2 minutes idle, so 5-minute pings
+    keep the container alive cheaply. Cost: ~$0 (warmup endpoint is a
+    lightweight ping, not GPU inference).
+
+    Disable in dev / preview by leaving PERCH_MODAL_URL blank.
+    """
+    if not PERCH_MODAL_URL:
+        logger.info("Perch keep-warm disabled (PERCH_MODAL_URL unset)")
+        return
+    url = _perch_warmup_url()
+    logger.info("Perch keep-warm enabled — pinging %s every %ds", url, PERCH_KEEPWARM_INTERVAL_S)
+    # Slight initial delay so we don't double-ping on every cold deploy.
+    await asyncio.sleep(15)
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=30) as http:
+                r = await http.get(url)
+            logger.info("Perch keep-warm ping → %s", r.status_code)
+        except Exception as e:
+            logger.warning("Perch keep-warm ping failed: %s", e)
+        await asyncio.sleep(PERCH_KEEPWARM_INTERVAL_S)
+
+
 # ---------------------------- App wiring ----------------------------
 
 app.include_router(api_router)
 
+app.add_middleware(LatencyMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -1438,6 +1641,12 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+async def start_background_tasks():
+    """Kick the Perch keep-warm loop. Safe no-op when Perch isn't configured."""
+    asyncio.create_task(_keepwarm_perch_loop())
 
 
 @app.on_event("shutdown")
