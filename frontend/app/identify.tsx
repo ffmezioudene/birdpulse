@@ -29,6 +29,8 @@ import {
   useAudioRecorderState,
 } from 'expo-audio';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import { FeatherWave } from '@/src/components/FeatherWave';
@@ -67,6 +69,103 @@ export default function Identify() {
   const [errorMsg, setErrorMsg] = useState<string>('');
   const photoAbortRef = useRef<AbortController | null>(null);
   const flashAnim = useRef(new Animated.Value(0)).current;
+
+  // -------------------- Camera zoom --------------------
+  // expo-camera's `zoom` prop is normalized 0..1 across all devices. The
+  // jump from 0 → 1 is non-linear (roughly logarithmic on iOS), so the
+  // visual values below were tuned by hand to match what users expect
+  // from an iPhone Camera-style 1x / 2x / 5x pill:
+  //   1x → 0     (no zoom)
+  //   2x → 0.18  (looks ~2× on most iPhones)
+  //   5x → 0.45  (looks ~5× — digital on most devices, telephoto on Pros)
+  // Pinch is mapped to the same 0..1 range via a soft multiplier so a
+  // natural-feeling pinch traverses about half the range.
+  const ZOOM_LEVELS: { label: string; value: number }[] = [
+    { label: '1x', value: 0 },
+    { label: '2x', value: 0.18 },
+    { label: '5x', value: 0.45 },
+  ];
+  const [zoom, setZoom] = useState(0);
+  // Refs mirror state so gesture worklets (which can't read React state
+  // directly) and rAF-driven button animations both see fresh values.
+  const zoomRef = useRef(0);
+  const pinchBaseRef = useRef(0);
+  const zoomAnimRafRef = useRef<number | null>(null);
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+  // Reset zoom whenever the user flips between Photo / Sound mode. The
+  // mode-switch reset also covers the "navigate away and come back" case
+  // because the screen remounts (state is initial-value 0 on next mount).
+  useEffect(() => {
+    setZoom(0);
+    zoomRef.current = 0;
+    pinchBaseRef.current = 0;
+    if (zoomAnimRafRef.current) {
+      cancelAnimationFrame(zoomAnimRafRef.current);
+      zoomAnimRafRef.current = null;
+    }
+  }, [mode]);
+
+  /** Smoothly animate zoom to a target over ~200 ms (ease-out quad).
+   *  Used when the user taps a 1x / 2x / 5x button so the change feels
+   *  intentional rather than a jump-cut. */
+  const animateZoomTo = (target: number) => {
+    if (zoomAnimRafRef.current) cancelAnimationFrame(zoomAnimRafRef.current);
+    const start = zoomRef.current;
+    const t0 = Date.now();
+    const DURATION_MS = 200;
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - t0) / DURATION_MS);
+      const eased = 1 - Math.pow(1 - t, 2); // ease-out quad
+      const next = start + (target - start) * eased;
+      setZoom(next);
+      zoomRef.current = next;
+      if (t < 1) {
+        zoomAnimRafRef.current = requestAnimationFrame(tick);
+      } else {
+        zoomAnimRafRef.current = null;
+      }
+    };
+    tick();
+  };
+
+  /** Tap handler for the 1x / 2x / 5x pill buttons. */
+  const onZoomBtn = (target: number) => {
+    if (Math.abs(zoomRef.current - target) < 0.005) return; // no-op on the active one
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    animateZoomTo(target);
+  };
+
+  /** Two-finger pinch gesture on the camera viewfinder. Uses the native
+   *  RNGH gesture system + a `runOnJS` bridge to feed setZoom. The base
+   *  zoom at pinch-start is captured so multiple pinches compose naturally
+   *  rather than always starting from 0. */
+  const onPinchBegin = () => {
+    pinchBaseRef.current = zoomRef.current;
+    if (zoomAnimRafRef.current) {
+      cancelAnimationFrame(zoomAnimRafRef.current);
+      zoomAnimRafRef.current = null;
+    }
+  };
+  const onPinchChange = (scale: number) => {
+    // scale starts at 1.0 and grows as fingers spread. The 0.35 multiplier
+    // makes a typical pinch (~2× spread) cover about a third of the range,
+    // which feels right on a phone-sized viewport without being twitchy.
+    const next = Math.max(0, Math.min(1, pinchBaseRef.current + (scale - 1) * 0.35));
+    setZoom(next);
+    zoomRef.current = next;
+  };
+  const pinchGesture = Gesture.Pinch()
+    .onBegin(() => {
+      'worklet';
+      runOnJS(onPinchBegin)();
+    })
+    .onChange((e) => {
+      'worklet';
+      runOnJS(onPinchChange)(e.scale);
+    });
+  // -------------------- /Camera zoom --------------------
 
   // Sound ID — Perch 2.0 real audio path.
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -170,6 +269,15 @@ export default function Identify() {
     setPhotoPhase('idle');
     setCapturedB64(null);
     setErrorMsg('');
+    // Per spec: zoom returns to 1x when the user retakes a photo after a
+    // failed ID. Stops any in-flight button animation too.
+    if (zoomAnimRafRef.current) {
+      cancelAnimationFrame(zoomAnimRafRef.current);
+      zoomAnimRafRef.current = null;
+    }
+    setZoom(0);
+    zoomRef.current = 0;
+    pinchBaseRef.current = 0;
   };
 
   /** Re-runs identification on the SAME captured photo (Try Again button). */
@@ -401,7 +509,18 @@ export default function Identify() {
         <View style={styles.previewWrap}>
           {mode === 'photo' && permission?.granted ? (
             <>
-              <CameraView ref={cameraRef} style={styles.preview} facing="back" />
+              {/* Two-finger pinch on the viewfinder maps to the camera's
+                  zoom prop. The GestureDetector wraps just the CameraView
+                  so it doesn't fight with taps on overlay UI (buttons,
+                  framing guide, processing overlay). */}
+              <GestureDetector gesture={pinchGesture}>
+                <CameraView
+                  ref={cameraRef}
+                  style={styles.preview}
+                  facing="back"
+                  zoom={zoom}
+                />
+              </GestureDetector>
               {/* White-flash overlay — fades from 1 → 0 in ~280 ms on capture. */}
               <Animated.View
                 pointerEvents="none"
@@ -451,6 +570,33 @@ export default function Identify() {
               <View style={[styles.corner, styles.cornerTR]} />
               <View style={[styles.corner, styles.cornerBL]} />
               <View style={[styles.corner, styles.cornerBR]} />
+            </View>
+          )}
+
+          {/* Zoom pill — iPhone-Camera-style 1x / 2x / 5x selector. Only
+              shown in the live photo viewfinder (not during processing,
+              not in Sound mode). Sits above the framing guide's bottom
+              edge so it doesn't crowd the shutter or block the subject. */}
+          {mode === 'photo' && photoPhase === 'idle' && permission?.granted && (
+            <View pointerEvents="box-none" style={styles.zoomWrap}>
+              <View style={styles.zoomPill} testID="zoom-pill">
+                {ZOOM_LEVELS.map((lvl) => {
+                  const active = Math.abs(zoom - lvl.value) < 0.005;
+                  return (
+                    <TouchableOpacity
+                      key={lvl.label}
+                      activeOpacity={0.7}
+                      onPress={() => onZoomBtn(lvl.value)}
+                      style={[styles.zoomBtn, active && styles.zoomBtnActive]}
+                      testID={`zoom-${lvl.label}`}
+                    >
+                      <Text style={[styles.zoomText, active && styles.zoomTextActive]}>
+                        {lvl.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
           )}
 
@@ -646,6 +792,45 @@ const styles = StyleSheet.create({
   permBtnText: { ...type.bodySm, color: '#0E0F0D', fontWeight: '700' },
   frame: { position: 'absolute', top: 40, left: 40, right: 40, bottom: 40 },
   corner: { position: 'absolute', width: 28, height: 28, borderColor: colors.primary, borderWidth: 3 },
+  // ---- Zoom pill (1x / 2x / 5x) ----
+  zoomWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 18,
+    alignItems: 'center',
+  },
+  zoomPill: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: 'rgba(14, 15, 13, 0.55)',
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  zoomBtn: {
+    minWidth: 44,
+    height: 38,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  zoomBtnActive: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+  zoomText: {
+    ...type.bodySm,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  zoomTextActive: {
+    color: '#0E0F0D',
+  },
   cornerTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 8 },
   cornerTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 8 },
   cornerBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 8 },
