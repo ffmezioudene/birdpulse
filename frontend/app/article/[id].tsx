@@ -63,14 +63,29 @@ export default function ArticleReader() {
             </TouchableOpacity>
           </SafeAreaView>
           <View style={styles.heroCopy}>
-            <Text style={styles.eyebrow}>FIELD NOTES</Text>
+            <Text style={styles.eyebrow}>
+              FIELD NOTES{(article as any).readingMinutes ? `  ·  ${(article as any).readingMinutes} MIN READ` : ''}
+            </Text>
             <Text style={styles.title}>{article.title}</Text>
             <Text style={styles.subtitle}>{article.subtitle}</Text>
           </View>
         </View>
 
         <View style={styles.bodyWrap}>
-          <Text style={styles.body}>{article.body}</Text>
+          {/* Lede paragraph — pulled from the article's `body` field. Renders
+              first in both legacy (body-only) and new (body + sections) articles. */}
+          {article.body ? <Text style={styles.lede}>{article.body}</Text> : null}
+
+          {/* Long-form sections. When present, they replace the rest of the
+              article. Each section gets a heading + paragraph for scannability. */}
+          {(article as any).sections && Array.isArray((article as any).sections)
+            ? (article as any).sections.map((s: { heading: string; body: string }, i: number) => (
+                <View key={`sec-${i}`} style={styles.section}>
+                  <Text style={styles.sectionHeading}>{s.heading}</Text>
+                  <Text style={styles.body}>{s.body}</Text>
+                </View>
+              ))
+            : null}
 
           <View style={styles.signature}>
             <FeatherWave size={28} mode="static" />
@@ -128,6 +143,21 @@ const styles = StyleSheet.create({
   title: { ...type.displayL, color: colors.textPrimary, fontSize: 30 },
   subtitle: { ...type.bodyL, color: colors.textSecondary },
   bodyWrap: { padding: 20, gap: spacing.xl },
+  lede: {
+    ...type.bodyL,
+    color: colors.textPrimary,
+    lineHeight: 28,
+    fontWeight: '500',
+    // Subtle visual separation from the section body that follows.
+    marginBottom: 4,
+  },
+  section: { gap: 10 },
+  sectionHeading: {
+    ...type.bodyL,
+    color: colors.primary,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
   body: { ...type.bodyL, color: colors.textSecondary, lineHeight: 28 },
   signature: { flexDirection: 'row', alignItems: 'center', gap: 12, opacity: 0.6 },
   signatureText: { ...type.caption, color: colors.textTertiary },

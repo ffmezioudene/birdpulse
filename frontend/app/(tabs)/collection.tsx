@@ -15,10 +15,9 @@ import {
 import { computeBadges, currentStreakDays, uniqueSpecies } from '@/src/lib/badges';
 import { SEED_BIRDS } from '@/src/lib/birds';
 import { FeatherWave } from '@/src/components/FeatherWave';
-import { MapView, Marker } from '@/src/components/MapView';
 import { CollectionPickerModal } from '@/src/components/CollectionPickerModal';
 
-type ViewKey = 'map' | 'timeline' | 'badges' | 'collections' | 'favorites';
+type ViewKey = 'timeline' | 'badges' | 'collections' | 'favorites';
 
 export default function NatureJournal() {
   const router = useRouter();
@@ -81,7 +80,7 @@ export default function NatureJournal() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.segmentRow}
         >
-          {(['timeline','map','badges','collections','favorites'] as ViewKey[]).map((k) => (
+          {(['timeline','badges','collections','favorites'] as ViewKey[]).map((k) => (
             <TouchableOpacity
               key={k}
               onPress={() => { Haptics.selectionAsync(); setView(k); }}
@@ -129,54 +128,6 @@ export default function NatureJournal() {
               ))
             )}
           </ScrollView>
-        )}
-
-        {view === 'map' && (
-          <View style={{ flex: 1 }}>
-            <View style={styles.mapWrap}>
-              {MapView ? (
-                <MapView
-                  style={{ flex: 1 }}
-                  initialRegion={initialRegion(sightings)}
-                  userInterfaceStyle="dark"
-                  showsUserLocation
-                  testID="journal-map"
-                >
-                  {sightings.map((s) => (
-                    <Marker
-                      key={s.id}
-                      coordinate={{ latitude: s.latitude, longitude: s.longitude }}
-                      title={s.commonName}
-                      description={new Date(s.createdAt).toLocaleDateString()}
-                      pinColor={colors.primary}
-                    />
-                  ))}
-                </MapView>
-              ) : (
-                <View style={styles.mapFallback}>
-                  <FeatherWave size={60} mode="static" glow />
-                  <Text style={styles.mapFallbackText}>The map of your journey opens on mobile.</Text>
-                </View>
-              )}
-            </View>
-            <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: 10, paddingBottom: 160 }}>
-              <Text style={styles.bucketLabel}>Pinned sightings · {sightings.length}</Text>
-              {sightings.length === 0 ? (
-                <EmptyState
-                  title="No pins on the map yet."
-                  subtitle="After identifying a bird, tap Log Sighting to pin it here."
-                />
-              ) : sightings.map((s) => (
-                <View key={s.id} style={styles.timelineRow} testID={`map-sighting-${s.id}`}>
-                  {s.image ? <Image source={{ uri: s.image }} style={styles.tImg} /> : <View style={styles.tImg} />}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.tName}>{s.commonName}</Text>
-                    <Text style={styles.tMeta}>{new Date(s.createdAt).toLocaleString()}</Text>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
         )}
 
         {view === 'badges' && (
@@ -335,18 +286,6 @@ function groupByBucket(history: HistoryItem[]): [string, HistoryItem[]][] {
   return Object.entries(buckets);
 }
 
-function initialRegion(sightings: Sighting[]) {
-  if (sightings.length) {
-    return {
-      latitude: sightings[0].latitude,
-      longitude: sightings[0].longitude,
-      latitudeDelta: 0.1,
-      longitudeDelta: 0.1,
-    };
-  }
-  return { latitude: 40.7128, longitude: -74.006, latitudeDelta: 0.4, longitudeDelta: 0.4 };
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   header: {
@@ -385,12 +324,6 @@ const styles = StyleSheet.create({
   tImg: { width: 56, height: 56, borderRadius: 12, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' },
   tName: { ...type.bodyLg, color: colors.textPrimary, fontWeight: '700' },
   tMeta: { ...type.bodySm, color: colors.textTertiary },
-  mapWrap: {
-    height: 280, marginHorizontal: 20, borderRadius: radii.card, overflow: 'hidden',
-    backgroundColor: colors.bgTertiary, borderWidth: 1, borderColor: colors.hairline,
-  },
-  mapFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: spacing.lg },
-  mapFallbackText: { ...type.body, color: colors.textSecondary, textAlign: 'center' },
   badgeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   badgeCard: {
     width: '48.5%',

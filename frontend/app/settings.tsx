@@ -130,16 +130,20 @@ export default function Settings() {
           </Section>
 
           <Section title="Support">
-            <Row icon="help-circle-outline" label="FAQ & Help" onPress={() => {}} />
-            <Row icon="bulb-outline" label="Suggestion" onPress={() => {}} />
             <Row
-              icon="star-outline"
-              label="Rate Us"
+              icon="mail-outline"
+              label="Contact us"
               onPress={() =>
-                Linking.openURL('https://apps.apple.com').catch(() => {})
+                Linking.openURL(
+                  'mailto:contact@bird-identifier.app' +
+                    '?subject=' +
+                    encodeURIComponent('BirdPulse — Support request') +
+                    '&body=' +
+                    encodeURIComponent('Hi BirdPulse team,\n\n'),
+                ).catch(() => {})
               }
+              testID="settings-contact-us"
             />
-            <Row icon="share-social-outline" label="Tell Friends" onPress={() => {}} />
           </Section>
 
           <Section title="About">

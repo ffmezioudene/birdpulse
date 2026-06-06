@@ -183,22 +183,39 @@ export default function Identify() {
 
   const capture = async () => {
     if (photoPhase !== 'idle') return; // hard guard against double-tap
+    // Strong, immediate haptic so the user feels the shutter even on a
+    // device with the speaker muted.
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     if (!permission?.granted) {
       const res = await requestPermission();
       if (!res.granted) return;
     }
     if (!cameraRef.current) return;
-    // Mark captured immediately so the shutter visually disables.
+    // Mark captured immediately so the shutter visually disables AND the
+    // processing overlay slides over the viewfinder within one render frame.
+    // The overlay has its own opaque background, so the camera view is
+    // covered even before takePictureAsync() resolves (~200-500 ms later).
     setPhotoPhase('captured');
-    // White flash effect (250ms).
-    flashAnim.setValue(1);
-    Animated.timing(flashAnim, {
-      toValue: 0,
-      duration: 280,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    }).start();
+    // White flash — quick ramp to 0.95, brief hold, smooth fade. Total
+    // ~280 ms, with a clear PEAK so the moment of capture is unmistakable.
+    flashAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(flashAnim, {
+        toValue: 0.95,
+        duration: 70,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      // Hold the peak for a beat — this is what makes the flash feel real
+      // rather than a barely-perceptible blink.
+      Animated.delay(50),
+      Animated.timing(flashAnim, {
+        toValue: 0,
+        duration: 220,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
     try {
       const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7 });
       if (photo?.base64) {
@@ -701,10 +718,18 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: radii.card,
     overflow: 'hidden',
+    // CRITICAL: opaque background so the camera viewfinder is fully
+    // covered the instant photoPhase !== 'idle' — even before the
+    // captured Image has loaded. Without this, there's a ~200-500 ms
+    // window where the live camera bleeds through and users wonder
+    // whether their tap registered.
+    backgroundColor: colors.bg,
   },
   processingScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    // Darker scrim makes the captured photo recede into the background
+    // so the "Identifying species…" card is the clear focus.
+    backgroundColor: 'rgba(0,0,0,0.72)',
   },
   processingInner: {
     flex: 1,
