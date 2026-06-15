@@ -115,7 +115,7 @@ export default function Paywall() {
     if (!IS_RC_AVAILABLE || !chosenPkg) {
       Alert.alert(
         'Subscriptions unavailable',
-        'In-app purchases require the BirdPulse mobile app. Please open BirdPulse on your iOS or Android device.',
+        'In-app purchases require the BirdPulse mobile app. Please open the BirdPulse app on your phone to subscribe.',
       );
       return;
     }
@@ -371,7 +371,7 @@ export default function Paywall() {
               <Ionicons name="phone-portrait-outline" size={32} color={colors.textTertiary} />
               <Text style={styles.unavailableTitle}>Available in the mobile app</Text>
               <Text style={styles.unavailableBody}>
-                BirdPulse subscriptions are purchased through the iOS App Store and Google Play. Open BirdPulse on your phone to subscribe.
+                BirdPulse subscriptions are purchased through the App Store. Open the BirdPulse app on your phone to subscribe.
               </Text>
             </View>
           )}
@@ -435,7 +435,7 @@ export default function Paywall() {
                     <Text style={styles.footerLinkMuted}>Privacy</Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.fineprint}>Auto-renewable. Cancel anytime in the App Store / Play Store.</Text>
+                <Text style={styles.fineprint}>Auto-renewable. Cancel anytime in your App Store subscription settings.</Text>
               </View>
             </>
           )}
