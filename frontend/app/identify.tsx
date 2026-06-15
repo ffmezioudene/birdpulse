@@ -555,7 +555,11 @@ export default function Identify() {
                     <Ionicons name="camera-outline" size={56} color={colors.primary} />
                     <Text style={styles.permText}>Camera permission needed</Text>
                     <TouchableOpacity style={styles.permBtn} onPress={requestPermission} testID="grant-camera">
-                      <Text style={styles.permBtnText}>Allow Camera</Text>
+                      {/* Apple Guideline 5.1.1(iv): pre-permission button labels must
+                          NOT use words like "Allow" / "Grant" that imply we're
+                          granting permission ourselves. "Continue" hands the user
+                          off to Apple's official system dialog without confusion. */}
+                      <Text style={styles.permBtnText}>Continue</Text>
                     </TouchableOpacity>
                   </View>
                 )}
