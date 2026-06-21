@@ -1,0 +1,39 @@
+{
+  "summary": "Frontend-only validation of BirdPulse v1.0.2 paywall redesign + review-prompt wiring on Metro web preview (375x667). All primary review items pass: paywall renders cleanly with correct hero/eyebrow/title and exactly the 4 specified benefits (no 'range maps'); close [X] is hidden for the first 3s (parent opacity=0, pointerEvents=none, disabled=true) then fades in (opacity=1, pointerEvents=auto); tapping X on web dismisses to /(tabs) without opening the Exit Reframe Drawer (correct, since annualPkg is null on web); /result renders without crash on both 1st and 2nd lifetime successful IDs, and the new StoreReview useEffect runs without producing any unhandled promise rejections or red-screen errors; tab navigation (Home, Collection) works. No console pageerrors. The 'Available in the mobile app' notice is correctly shown in place of plan cards on web (IS_RC_AVAILABLE=false), as the spec confirms is intentional.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "paywall.tsx",
+       "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. The Animated.View wrapping the close button passes pointerEvents as a prop (paywall.tsx:362). Reference: /app/frontend/app/paywall.tsx:362"},
+      {"component": "global (shadow* props)",
+       "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Likely originates from theme shadows.glowPrimary used on .cta (paywall.tsx) and detailBtn (result.tsx). Reference: /app/frontend/src/theme (shadows.glowPrimary)"},
+      {"component": "Animations",
+       "issue": "Web warning: 'Animated: useNativeDriver is not supported because the native animated module is missing'. Expected on web; on native this is fine. No action required."}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Low priority) Migrate Animated.View `pointerEvents` prop to `style={{ pointerEvents: ... }}` in paywall.tsx close-button wrapper to silence the deprecation warning on web.",
+    "(Low priority) Migrate the theme `shadows.glowPrimary` token to use `boxShadow` (or the modern shadow*Color/elevation pattern) to silence RN Web shadow deprecation warning.",
+    "(Optional regression) Add a `testID` (e.g. `bird-of-day-card`) on the Bird-of-the-Day card so future regression scripts can reliably tap into the Cooper's Hawk detail screen; in this iteration the text-based selector hit the overlay label and did not navigate, so the Cooper's Hawk → /bird/[id] regression remained INCONCLUSIVE via automation (visually the card is rendered; manual tap on device should still work)."
+  ],
+  "critical_code_review_comments": [
+    "paywall.tsx onClosePress correctly only opens the Exit Drawer when both `annualPkg && IS_RC_AVAILABLE` — on web this short-circuits to dismissPaywall, matching the spec.",
+    "result.tsx StoreReview effect is well-guarded: ref-based double-fire guard for StrictMode, persistent `hasRated` flag via markReviewRequested(), and try/catch that swallows errors so the result screen can never crash from review-prompt failures. shouldRequestReview only returns true when count===2, satisfying the 'once, on 2nd lifetime ID' rule.",
+    "state.ts recordSuccessfulIdentification is async-safe and uses an explicit default of 0; minor: a concurrent double-call could double-count but the hasRated guard makes that harmless.",
+    "paywall.tsx ctaLabel correctly falls back to 'Continue with [priceString] →' when no free trial is present, and the chevron lives in a separate <Ionicons> inside ctaInner (not concatenated into the string), which is the correct RN approach."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "skipped", "frontend": "100% on in-scope checks (A,B,C,D,E,partial F)"},
+  "seed_data_creation": "None. Used a synthetic /result payload via URL query string (American Robin) to exercise the StoreReview useEffect path without needing the real Photo/Sound ID pipeline.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Web preview: tapping the [X] becomes possible only after ~3.5s (CLOSE_REVEAL_DELAY_MS=3000 + 400ms fade). On web, IS_RC_AVAILABLE is false so plan cards, paywall-trust-line, paywall-subscribe-button, and paywall-exit-drawer are not rendered — only the 'Available in the mobile app' notice. Exit drawer & purchase flow require iOS device QA. Onboarding/paywall storage flags persist in web localStorage and may auto-redirect first launches to /onboarding → /paywall; advance through onboarding (5 'Continue' taps) and dismiss the paywall before testing tab nav. For Cooper's Hawk regression add a testID to the BotD card to make automation reliable.",
+  "rca_of_issue": "N/A — no regressions found. Console-level warnings (shadow* props, pointerEvents prop, useNativeDriver) are RN-Web compatibility noise and do not affect functionality on web or native. The 500 from /api/wiki/summary is backend (out of scope this round) and is handled gracefully by result.tsx's .catch(() => {}) — the hero image falls through to seed/silhouette correctly."
+}

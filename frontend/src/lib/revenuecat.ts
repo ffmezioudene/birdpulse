@@ -131,6 +131,16 @@ export async function configureRevenueCat(): Promise<boolean> {
     if (__DEV__) Purchases.setLogLevel(LOG_LEVEL.DEBUG);
 
     await Purchases.configure({ apiKey });
+    // Apple Search Ads attribution — collects the AdServices attribution
+    // token so install attribution can flow into RevenueCat for ROAS/LTV
+    // measurement. No-op on Android and on devices that don't support
+    // AdServices (no user-facing prompt). Must come AFTER configure().
+    try {
+      // Method exists on iOS only; guard so Android builds don't crash.
+      (Purchases as any).enableAdServicesAttributionTokenCollection?.();
+    } catch {
+      /* silent — ASA token is best-effort */
+    }
     configured = true;
     return true;
   } catch (e) {

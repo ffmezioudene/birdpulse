@@ -2,7 +2,7 @@
   "expo": {
     "name": "BirdPulse",
     "slug": "birdpulse",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "birdpulse",
@@ -10,6 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "13",
       "infoPlist": {
         "NSCameraUsageDescription": "Capture photos of birds to identify them",
         "NSMicrophoneUsageDescription": "Record bird calls to identify species",
@@ -23,6 +24,7 @@
         "backgroundColor": "#0E0F0D"
       },
       "edgeToEdgeEnabled": true,
+      "versionCode": 13,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",

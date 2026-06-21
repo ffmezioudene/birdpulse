@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,10 @@ import {
   Dimensions,
   Alert,
   ActivityIndicator,
+  Animated,
+  Easing,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,11 +35,16 @@ import type { PurchasesPackage } from 'react-native-purchases';
 const { height: SCREEN_H } = Dimensions.get('window');
 const COMPACT = SCREEN_H < 720; // iPhone SE / 13 mini territory
 
+// How long (ms) the close [X] button stays hidden after the paywall mounts.
+// Apple-compliant (still dismissable via gesture; the visible button just
+// fades in to discourage reflex-tap dismissal of the conversion screen).
+const CLOSE_REVEAL_DELAY_MS = 3000;
+
 const BENEFITS = [
   'Instant bird ID with high accuracy',
   'In-depth info for 10,000+ species',
   'Advanced bird-call recognition',
-  'Expert insights & range maps',
+  'Expert insights & species deep-dives',
 ];
 
 export default function Paywall() {
@@ -44,22 +53,41 @@ export default function Paywall() {
   const [plan, setPlan] = useState<'yearly' | 'weekly'>('yearly');
   const [busy, setBusy] = useState(false);
 
+  // Exit Reframe Drawer — shown when user taps the [X] button. Lets them
+  // see a weekly-cost breakdown of the Yearly plan before fully dismissing.
+  const [exitDrawerOpen, setExitDrawerOpen] = useState(false);
+
   // Live offering packages from RevenueCat (or null on web / failure).
   const [weeklyPkg, setWeeklyPkg] = useState<PurchasesPackage | null>(null);
   const [annualPkg, setAnnualPkg] = useState<PurchasesPackage | null>(null);
   // Lifecycle of the offerings fetch — controls loading / error states.
-  // 'idle'   = haven't tried yet (web / not initialized)
-  // 'loading'= fetching from RC
-  // 'ready'  = at least one of the two packages loaded successfully
-  // 'error'  = RC returned nothing usable on a build that should have it
   const [offeringsState, setOfferingsState] =
     useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+
+  // ---- Delayed close-button reveal ---------------------------------------
+  // Per spec: the [X] should NOT be visible the moment the paywall mounts.
+  // It fades in after CLOSE_REVEAL_DELAY_MS. This is purely visual — we
+  // intentionally leave the underlying nav gesture unmodified for Apple
+  // compliance (users can still swipe back if they want to).
+  const closeOpacity = useRef(new Animated.Value(0)).current;
+  const [closeRevealed, setCloseRevealed] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setCloseRevealed(true);
+      Animated.timing(closeOpacity, {
+        toValue: 1,
+        duration: 400,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    }, CLOSE_REVEAL_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [closeOpacity]);
 
   // Load the live offering. Prices, currency, trial, everything comes from
   // RevenueCat — we never hardcode a price in this UI.
   useEffect(() => {
     if (!IS_RC_AVAILABLE) {
-      // Web preview: skip; we'll render the mobile-only notice below.
       setOfferingsState('idle');
       return;
     }
@@ -81,8 +109,6 @@ export default function Paywall() {
         null;
       setWeeklyPkg(w);
       setAnnualPkg(a);
-      // Even a single package counts as a usable offering; we only flip to
-      // 'error' if both are missing (real misconfiguration).
       setOfferingsState(w || a ? 'ready' : 'error');
     })();
   }, [rc.initialized]);
@@ -95,23 +121,19 @@ export default function Paywall() {
         return;
       }
       storage.setItem(KEYS.paywallSeen, true);
-      // NOTE: We deliberately do NOT auto-invoke RevenueCatUI.presentPaywallIfNeeded()
-      // here. It requires a published Paywall design attached to the offering in the
-      // RevenueCat dashboard — if none exists, the SDK throws "Error presenting
-      // paywall: document is not..." into the user's face. Our custom dark paywall
-      // already handles everything (live prices, dynamic SAVE %, free-trial CTA,
-      // restore, Apple-compliant footer). When you publish a hosted Paywall design
-      // later, we can flip a flag to try it first and fall back to this UI.
     })();
-  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [router]);
 
-  const subscribe = async () => {
+  // ------------------------------------------------------------------------
+  // Purchase action. Used by BOTH the main paywall CTA and the Exit Reframe
+  // Drawer CTA. The drawer passes its own `whichPlan` override.
+  // ------------------------------------------------------------------------
+  const subscribe = async (overridePlan?: 'yearly' | 'weekly') => {
     if (busy) return;
     Haptics.selectionAsync().catch(() => {});
 
-    const chosenPkg = plan === 'yearly' ? annualPkg : weeklyPkg;
-    // Subscribe button is only rendered when we have a live RevenueCat
-    // package. Anything else is a no-op rather than a fake grant.
+    const whichPlan = overridePlan ?? plan;
+    const chosenPkg = whichPlan === 'yearly' ? annualPkg : weeklyPkg;
     if (!IS_RC_AVAILABLE || !chosenPkg) {
       Alert.alert(
         'Subscriptions unavailable',
@@ -126,6 +148,7 @@ export default function Paywall() {
       if (outcome.kind === 'purchased') {
         await rc.refresh();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        setExitDrawerOpen(false);
         router.replace('/(tabs)');
       } else if (outcome.kind === 'error') {
         Alert.alert('Purchase failed', outcome.message);
@@ -158,16 +181,47 @@ export default function Paywall() {
     }
   };
 
-  const skip = () => {
-    Haptics.selectionAsync();
+  /** Hard-dismiss the paywall and return to the app. Used by the drawer's
+   *  "No thanks" button — NOT by the top [X] button (that opens the drawer
+   *  first, see `onClosePress` below). */
+  const dismissPaywall = () => {
+    Haptics.selectionAsync().catch(() => {});
+    setExitDrawerOpen(false);
     router.replace('/(tabs)');
   };
 
+  /** [X] tap handler. Opens the Exit Reframe Drawer if we have enough info
+   *  to show a meaningful weekly-cost reframe. Otherwise just dismisses. */
+  const onClosePress = () => {
+    Haptics.selectionAsync().catch(() => {});
+    // Need an annual package to do the weekly-breakdown reframe. If we
+    // don't have it (web preview, RC error, weekly-only offering) the
+    // drawer would render with nothing useful → just dismiss directly.
+    if (annualPkg && IS_RC_AVAILABLE) {
+      setExitDrawerOpen(true);
+    } else {
+      dismissPaywall();
+    }
+  };
+
   // ---- Derived strings (NEVER hardcoded prices) --------------------------
-  //
-  // Every visible price string here comes from RevenueCat's `priceString`,
-  // which is already localized to the user's currency by the store SDK.
-  // The SAVE % badge is computed from the actual prices, not hardcoded.
+
+  /** Format a numeric amount in the same currency as a RevenueCat product. */
+  const formatPrice = (amount: number, currencyCode?: string | null): string => {
+    const ccy = (currencyCode || 'USD').toUpperCase();
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: ccy,
+        // Allow up to 2 fractional digits; if the input is integer-cents it
+        // will collapse naturally to the locale's normal money format.
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(amount);
+    } catch {
+      return `${ccy} ${amount.toFixed(2)}`;
+    }
+  };
 
   /** Human-readable intro offer description for a single product. */
   const formatIntro = (pkg: PurchasesPackage | null): string | null => {
@@ -178,7 +232,6 @@ export default function Paywall() {
     if (!units || !unit) return null;
     const isFree = intro.price === 0;
     if (isFree) {
-      // Normalize to days for consistent "N days free" copy.
       const days =
         unit === 'DAY'
           ? units
@@ -191,7 +244,6 @@ export default function Paywall() {
                 : units;
       return `${days} ${days === 1 ? 'day' : 'days'} free`;
     }
-    // Discounted (not free) intro offer
     const label =
       unit === 'DAY'
         ? units === 1 ? 'day' : 'days'
@@ -210,18 +262,31 @@ export default function Paywall() {
     pkg: PurchasesPackage | null,
     period: 'year' | 'week',
   ): string => {
-    if (!pkg) return ''; // Cleanly blank during loading
+    if (!pkg) return '';
     const intro = formatIntro(pkg);
     if (intro) return `${intro}, then auto-renews ${period}ly`;
     return `Auto-renews ${period}ly`;
   };
 
-  /**
-   * Compute a discount badge for the yearly plan vs the weekly plan, using
-   * the SDK's pre-normalized `pricePerWeek` on the annual product (or fall
-   * back to dividing price by 52). Returns null if we don't have enough info
-   * to make an honest claim.
-   */
+  /** Free-trial day count for a given package, or 0 if none. */
+  const freeTrialDays = (pkg: PurchasesPackage | null): number => {
+    const intro = pkg?.product?.introPrice;
+    if (!intro || intro.price !== 0) return 0;
+    const units = intro.periodNumberOfUnits;
+    const unit = (intro.periodUnit || '').toUpperCase();
+    if (!units || !unit) return 0;
+    return unit === 'DAY'
+      ? units
+      : unit === 'WEEK'
+        ? units * 7
+        : unit === 'MONTH'
+          ? units * 30
+          : unit === 'YEAR'
+            ? units * 365
+            : units;
+  };
+
+  /** Discount badge on the yearly plan vs the weekly plan. */
   const yearlyBadge = ((): string | null => {
     if (!annualPkg || !weeklyPkg) return null;
     const annualPerWeek =
@@ -231,45 +296,44 @@ export default function Paywall() {
       return null;
     }
     const savings = 1 - annualPerWeek / weeklyPrice;
-    // Only surface a savings claim if it's meaningfully better.
     if (savings < 0.1) return null;
     const pct = Math.round(savings * 100);
     return `SAVE ${pct}%`;
   })();
 
-  /** CTA label — uses real intro offer wording when present. */
+  /** Main CTA label. Per spec: short and ownership-framed ("Start My Free
+   *  Trial →"). Trial-day detail lives in the trust line below it. */
   const ctaLabel = ((): string => {
     const chosen = plan === 'yearly' ? annualPkg : weeklyPkg;
     if (!chosen) return 'Continue';
-    const intro = chosen.product.introPrice;
-    const units = intro?.periodNumberOfUnits ?? 0;
-    const unit = (intro?.periodUnit || '').toUpperCase();
-    const isFree = !!intro && intro.price === 0 && units > 0;
-
-    if (isFree) {
-      // Normalize WEEK / MONTH / YEAR trials to a day count so the copy reads
-      // "Start 7 days free" regardless of how the store models the period.
-      const days =
-        unit === 'DAY'
-          ? units
-          : unit === 'WEEK'
-            ? units * 7
-            : unit === 'MONTH'
-              ? units * 30
-              : unit === 'YEAR'
-                ? units * 365
-                : units;
-      return `Start ${days} ${days === 1 ? 'day' : 'days'} free`;
-    }
+    const hasFreeTrial = freeTrialDays(chosen) > 0;
+    if (hasFreeTrial) return 'Start My Free Trial';
     return `Continue with ${chosen.product.priceString}`;
   })();
 
-  // Showing the purchase UI requires real packages. We block-render
-  // skeletons during 'loading' and show an "unavailable" message on 'error'.
+  /** Trust line shown under the CTA. Carries the 7-day/price transparency. */
+  const trustLine = ((): string => {
+    const chosen = plan === 'yearly' ? annualPkg : weeklyPkg;
+    if (!chosen) return 'Cancel anytime.';
+    const days = freeTrialDays(chosen);
+    const periodWord = plan === 'yearly' ? 'year' : 'week';
+    if (days > 0) {
+      return `${days}-day free trial, then ${chosen.product.priceString}/${periodWord} · Cancel anytime`;
+    }
+    return `${chosen.product.priceString}/${periodWord} · Cancel anytime`;
+  })();
+
+  /** Weekly-equivalent for the Yearly plan — used in the Exit Drawer copy. */
+  const yearlyWeeklyEquivalentString = ((): string => {
+    if (!annualPkg) return '';
+    const perWeek =
+      annualPkg.product.pricePerWeek ?? annualPkg.product.price / 52;
+    return formatPrice(perWeek, annualPkg.product.currencyCode);
+  })();
+
+  // Render-state guards.
   const showLoading = IS_RC_AVAILABLE && offeringsState === 'loading' && !weeklyPkg && !annualPkg;
   const showError = IS_RC_AVAILABLE && offeringsState === 'error';
-  // On web (offeringsState === 'idle' and IS_RC_AVAILABLE === false) we show
-  // a mobile-only notice instead of the purchase buttons — never fake prices.
   const showMobileOnlyNotice = !IS_RC_AVAILABLE;
 
   // Hero ~40% of screen
@@ -290,23 +354,27 @@ export default function Paywall() {
       </ImageBackground>
 
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        {/* Top row — single close (X) button, neatly anchored to the top-left.
-            Matches the iconBtn pattern used on detail / settings screens. */}
+        {/* Top row — de-emphasized close [X], fades in after 3s. No solid
+            pill / border; a soft translucent glyph so it doesn't compete
+            with the CTA. The opacity ramp is purely cosmetic (Apple still
+            lets users back-gesture at any time). */}
         <View style={styles.topRow}>
-          <TouchableOpacity
-            style={styles.closeBtn}
-            onPress={skip}
-            testID="paywall-close-button"
-            hitSlop={10}
-            accessibilityLabel="Close"
-          >
-            <Ionicons name="close" size={20} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <Animated.View style={{ opacity: closeOpacity }} pointerEvents={closeRevealed ? 'auto' : 'none'}>
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={onClosePress}
+              testID="paywall-close-button"
+              hitSlop={16}
+              accessibilityLabel="Close"
+              disabled={!closeRevealed}
+            >
+              <Ionicons name="close" size={18} color="rgba(244,246,242,0.55)" />
+            </TouchableOpacity>
+          </Animated.View>
         </View>
 
         {/* Flexible content area */}
         <View style={styles.content}>
-          {/* Title block — pushed down to sit over hero fade */}
           <View style={[styles.titleBlock, COMPACT && { marginTop: spacing.sm }]}>
             <View style={styles.titleRow}>
               <Text style={styles.laurel}>❦</Text>
@@ -318,7 +386,6 @@ export default function Paywall() {
             </View>
           </View>
 
-          {/* Benefits — compact rows */}
           <View style={[styles.benefits, COMPACT && { gap: 8, marginTop: spacing.md }]}>
             {BENEFITS.map((b) => (
               <View key={b} style={styles.benefitRow}>
@@ -331,7 +398,7 @@ export default function Paywall() {
           </View>
 
           {/* Plans + CTA — purchase UI ONLY rendered when we have real live
-              prices from RevenueCat. No hardcoded prices ever leak here. */}
+              prices from RevenueCat. */}
           {showLoading && (
             <View style={[styles.plans, COMPACT && { gap: 8, marginTop: spacing.md }]}>
               <View style={[styles.plan, styles.planSkeleton]}>
@@ -412,16 +479,31 @@ export default function Paywall() {
                 <TouchableOpacity
                   style={[styles.cta, busy && { opacity: 0.6 }]}
                   activeOpacity={0.85}
-                  onPress={subscribe}
+                  onPress={() => subscribe()}
                   disabled={busy}
                   testID="paywall-subscribe-button"
                 >
                   {busy ? (
                     <ActivityIndicator color={'#0E0F0D'} />
                   ) : (
-                    <Text style={styles.ctaText}>{ctaLabel}</Text>
+                    <View style={styles.ctaInner}>
+                      <Text style={styles.ctaText}>{ctaLabel}</Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={22}
+                        color="#0E0F0D"
+                        style={styles.ctaChevron}
+                      />
+                    </View>
                   )}
                 </TouchableOpacity>
+
+                {/* Single trust line — small, secondary. Carries the 7-day
+                    free trial + transparent renewal price. */}
+                <Text style={styles.trustLine} testID="paywall-trust-line">
+                  {trustLine}
+                </Text>
+
                 <View style={styles.footerLinks}>
                   <TouchableOpacity onPress={onRestore} hitSlop={10} testID="paywall-restore">
                     <Text style={styles.footerLink}>Restore Purchases</Text>
@@ -435,15 +517,183 @@ export default function Paywall() {
                     <Text style={styles.footerLinkMuted}>Privacy</Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.fineprint}>Auto-renewable. Cancel anytime in your App Store subscription settings.</Text>
               </View>
             </>
           )}
         </View>
       </SafeAreaView>
+
+      {/* ----------------------------------------------------------------
+          EXIT REFRAME DRAWER — opened when the user taps the top [X].
+          Reframes the Yearly cost as a per-week price, keeps Yearly
+          pre-selected, surfaces Weekly as a secondary option, and offers
+          a "No thanks" escape that ACTUALLY dismisses the paywall.
+          ---------------------------------------------------------------- */}
+      <ExitReframeDrawer
+        visible={exitDrawerOpen}
+        annualPkg={annualPkg}
+        weeklyPkg={weeklyPkg}
+        weeklyEquivalentString={yearlyWeeklyEquivalentString}
+        freeTrialDays={freeTrialDays}
+        subtitleFor={subtitleFor}
+        yearlyBadge={yearlyBadge}
+        busy={busy}
+        onClose={() => setExitDrawerOpen(false)}
+        onSubscribe={(p) => subscribe(p)}
+        onNoThanks={dismissPaywall}
+      />
     </View>
   );
 }
+
+// ----------------------------------------------------------------------------
+// Exit Reframe Drawer
+// ----------------------------------------------------------------------------
+
+function ExitReframeDrawer({
+  visible,
+  annualPkg,
+  weeklyPkg,
+  weeklyEquivalentString,
+  freeTrialDays,
+  subtitleFor,
+  yearlyBadge,
+  busy,
+  onClose,
+  onSubscribe,
+  onNoThanks,
+}: {
+  visible: boolean;
+  annualPkg: PurchasesPackage | null;
+  weeklyPkg: PurchasesPackage | null;
+  weeklyEquivalentString: string;
+  freeTrialDays: (pkg: PurchasesPackage | null) => number;
+  subtitleFor: (pkg: PurchasesPackage | null, p: 'year' | 'week') => string;
+  yearlyBadge: string | null;
+  busy: boolean;
+  onClose: () => void;
+  onSubscribe: (plan: 'yearly' | 'weekly') => void;
+  onNoThanks: () => void;
+}) {
+  // Local plan state — pre-selected to Yearly per spec.
+  const [drawerPlan, setDrawerPlan] = useState<'yearly' | 'weekly'>('yearly');
+
+  // Reset to Yearly every time the drawer is re-opened.
+  useEffect(() => {
+    if (visible) setDrawerPlan('yearly');
+  }, [visible]);
+
+  // Per-selection CTA + trust line, computed from the live package data.
+  const chosenPkg = drawerPlan === 'yearly' ? annualPkg : weeklyPkg;
+  const periodWord = drawerPlan === 'yearly' ? 'year' : 'week';
+  const days = freeTrialDays(chosenPkg);
+
+  const drawerCtaLabel = ((): string => {
+    if (!chosenPkg) return 'Continue';
+    if (days > 0) return 'Start My Free Trial';
+    return `Continue with ${chosenPkg.product.priceString}`;
+  })();
+
+  const drawerTrustLine = ((): string => {
+    if (!chosenPkg) return 'Cancel anytime.';
+    if (days > 0) {
+      return `${days}-day free trial, then ${chosenPkg.product.priceString}/${periodWord} · Cancel anytime`;
+    }
+    return `${chosenPkg.product.priceString}/${periodWord} · Cancel anytime`;
+  })();
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      testID="paywall-exit-drawer"
+    >
+      <Pressable style={drawerStyles.backdrop} onPress={onClose} />
+      <SafeAreaView edges={['bottom']} style={drawerStyles.sheetWrap} pointerEvents="box-none">
+        <View style={drawerStyles.sheet}>
+          {/* Grab handle for visual affordance */}
+          <View style={drawerStyles.grab} />
+
+          <Text style={drawerStyles.headline}>Not ready for a full year?</Text>
+          <Text style={drawerStyles.sub}>
+            {weeklyEquivalentString
+              ? `That's just ${weeklyEquivalentString}/week, billed yearly.`
+              : 'Try a smaller plan instead.'}
+          </Text>
+
+          <View style={drawerStyles.plans}>
+            {annualPkg && (
+              <PlanCard
+                testID="exit-drawer-plan-yearly"
+                active={drawerPlan === 'yearly'}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setDrawerPlan('yearly');
+                }}
+                badge={yearlyBadge ?? 'BEST VALUE'}
+                title="Yearly"
+                price={annualPkg.product.priceString}
+                trial={subtitleFor(annualPkg, 'year')}
+              />
+            )}
+            {weeklyPkg && (
+              <PlanCard
+                testID="exit-drawer-plan-weekly"
+                active={drawerPlan === 'weekly'}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setDrawerPlan('weekly');
+                }}
+                title="Weekly"
+                price={weeklyPkg.product.priceString}
+                trial={subtitleFor(weeklyPkg, 'week')}
+              />
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={[drawerStyles.cta, busy && { opacity: 0.6 }]}
+            activeOpacity={0.85}
+            onPress={() => onSubscribe(drawerPlan)}
+            disabled={busy}
+            testID="exit-drawer-subscribe"
+          >
+            {busy ? (
+              <ActivityIndicator color={'#0E0F0D'} />
+            ) : (
+              <View style={drawerStyles.ctaInner}>
+                <Text style={drawerStyles.ctaText}>{drawerCtaLabel}</Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={22}
+                  color="#0E0F0D"
+                  style={{ marginLeft: 6 }}
+                />
+              </View>
+            )}
+          </TouchableOpacity>
+          <Text style={drawerStyles.trustLine}>{drawerTrustLine}</Text>
+
+          <TouchableOpacity
+            onPress={onNoThanks}
+            hitSlop={12}
+            style={drawerStyles.noThanksBtn}
+            testID="exit-drawer-no-thanks"
+          >
+            <Text style={drawerStyles.noThanksText}>No thanks</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Plan card (shared by main paywall + exit drawer)
+// ----------------------------------------------------------------------------
 
 function PlanCard({
   active,
@@ -500,16 +750,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
+    minHeight: 32,
   },
+  // De-emphasized close: smaller, no pill background, no border.
   closeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.hairline,
   },
   content: {
     flex: 1,
@@ -579,14 +827,29 @@ const styles = StyleSheet.create({
   },
   badgeText: { ...type.caption, color: '#fff', fontWeight: '800', fontSize: 10 },
   ctaWrap: { marginTop: spacing.lg },
+  // Larger CTA + chevron — primary conversion action.
   cta: {
     backgroundColor: colors.primary,
-    paddingVertical: 16,
+    paddingVertical: 18,
+    paddingHorizontal: spacing.lg,
     borderRadius: radii.button,
     alignItems: 'center',
     ...shadows.glowPrimary,
   },
-  ctaText: { ...type.bodyLg, color: '#0E0F0D', fontWeight: '800' },
+  ctaInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaText: { ...type.bodyLg, color: '#0E0F0D', fontWeight: '800', fontSize: 17 },
+  ctaChevron: { marginLeft: 6 },
+  trustLine: {
+    ...type.bodySm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 10,
+    fontSize: 12,
+  },
   footerLinks: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -597,7 +860,6 @@ const styles = StyleSheet.create({
   footerLink: { ...type.bodySm, color: colors.textPrimary, fontWeight: '700', fontSize: 12 },
   footerLinkMuted: { ...type.bodySm, color: colors.textTertiary, fontSize: 12 },
   footerSep: { ...type.bodySm, color: colors.textTertiary, fontSize: 12 },
-  fineprint: { ...type.bodySm, color: colors.textTertiary, textAlign: 'center', marginTop: 8, fontSize: 11 },
   // ---- Loading & error states ---------------------------------------------
   planSkeleton: {
     backgroundColor: 'rgba(255,255,255,0.04)',
@@ -646,4 +908,84 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   unavailableBtnText: { ...type.body, color: '#0E0F0D', fontWeight: '800' },
+});
+
+const drawerStyles = StyleSheet.create({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  sheetWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: colors.surface2,
+    borderTopLeftRadius: radii.modal,
+    borderTopRightRadius: radii.modal,
+    paddingHorizontal: H_PAD,
+    paddingTop: spacing.s12,
+    paddingBottom: spacing.md,
+    borderTopWidth: 1,
+    borderColor: colors.hairline,
+  },
+  grab: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    marginBottom: spacing.md,
+  },
+  headline: {
+    ...type.heading,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    fontSize: 20,
+  },
+  sub: {
+    ...type.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 6,
+    fontSize: 14,
+  },
+  plans: {
+    gap: 10,
+    marginTop: spacing.lg,
+  },
+  cta: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.primary,
+    paddingVertical: 18,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.button,
+    alignItems: 'center',
+    ...shadows.glowPrimary,
+  },
+  ctaInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaText: { ...type.bodyLg, color: '#0E0F0D', fontWeight: '800', fontSize: 17 },
+  trustLine: {
+    ...type.bodySm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 10,
+    fontSize: 12,
+  },
+  noThanksBtn: {
+    alignSelf: 'center',
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  noThanksText: {
+    ...type.bodySm,
+    color: colors.textTertiary,
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
 });

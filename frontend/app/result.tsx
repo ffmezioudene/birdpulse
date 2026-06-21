@@ -14,10 +14,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import * as StoreReview from 'expo-store-review';
 import { setAudioModeAsync } from 'expo-audio';
 import { colors, type, spacing, radii, shadows } from '@/src/theme';
 import { IdentifyResult } from '@/src/lib/api';
-import { addHistory, addSighting, slugFromScientific } from '@/src/lib/state';
+import {
+  addHistory,
+  addSighting,
+  slugFromScientific,
+  recordSuccessfulIdentification,
+  shouldRequestReview,
+  markReviewRequested,
+} from '@/src/lib/state';
 import { SEED_BIRDS } from '@/src/lib/birds';
 import { FeatherWave } from '@/src/components/FeatherWave';
 import { PolaroidCard } from '@/src/components/PolaroidCard';
@@ -90,6 +98,40 @@ export default function Result() {
       }
     } catch {}
   }, [params.payload, params.imageBase64, params.type]);
+
+  // ----------------------------------------------------------------------
+  // StoreKit review prompt — fires ONCE, after the lifetime 2nd successful
+  // identification. We delay by ~3.5s so the prompt lands after the reveal
+  // animation settles (count-up + slide-in), per Apple HIG.
+  //
+  // We guard with a ref so React's effect-fires-twice-in-dev-StrictMode
+  // doesn't double-count. The persisted `hasRated` flag in state.ts is the
+  // ultimate "only-ask-once" guarantee.
+  // ----------------------------------------------------------------------
+  const reviewRunRef = useRef(false);
+  useEffect(() => {
+    if (!data || reviewRunRef.current) return;
+    reviewRunRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const count = await recordSuccessfulIdentification();
+        if (!(await shouldRequestReview(count))) return;
+        // Defer the prompt until UI has settled.
+        const delayMs = 3500;
+        await new Promise((r) => setTimeout(r, delayMs));
+        if (cancelled) return;
+        if (!(await StoreReview.isAvailableAsync())) return;
+        await StoreReview.requestReview();
+        await markReviewRequested();
+      } catch {
+        /* best-effort; never break the result screen on review issues */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
 
   // Confidence count-up + reveal sequence
   useEffect(() => {

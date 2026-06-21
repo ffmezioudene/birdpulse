@@ -21,7 +21,35 @@ export const KEYS = {
   collections: 'birdlens.collections',
   chatSession: 'birdlens.chat.session',
   hasRated: 'birdlens.has.rated',
+  // Review-prompt v1: cumulative count of successful IDs across all time.
+  // The native StoreKit review sheet is shown ONCE, after the 2nd success
+  // (lifetime), and `hasRated` is flipped to true so we never ask again.
+  successfulIdCount: 'birdlens.success.id.count',
 };
+
+/* ---------- Review-prompt helpers (Change 2) ---------- */
+
+/** Increment the lifetime successful-identification counter and return
+ *  the new value. Safe to call from any thread; storage is async. */
+export async function recordSuccessfulIdentification(): Promise<number> {
+  const cur = (await storage.getItem<number>(KEYS.successfulIdCount, 0)) ?? 0;
+  const next = cur + 1;
+  await storage.setItem(KEYS.successfulIdCount, next);
+  return next;
+}
+
+/** Decide if we should request a native review prompt right now. True only
+ *  on exactly the 2nd successful ID, and only if we haven't asked before. */
+export async function shouldRequestReview(count: number): Promise<boolean> {
+  if (count !== 2) return false;
+  const already = await storage.getItem<boolean>(KEYS.hasRated, false);
+  return !already;
+}
+
+/** Mark that we've asked for a review so we never ask again. */
+export async function markReviewRequested(): Promise<void> {
+  await storage.setItem(KEYS.hasRated, true);
+}
 
 export const FREE_IDENTIFICATIONS_INITIAL = DEV_FREE_IDS;
 export const FREE_CHATS_INITIAL = DEV_FREE_CHATS;
