@@ -359,7 +359,9 @@ export default function Paywall() {
             with the CTA. The opacity ramp is purely cosmetic (Apple still
             lets users back-gesture at any time). */}
         <View style={styles.topRow}>
-          <Animated.View style={{ opacity: closeOpacity }} pointerEvents={closeRevealed ? 'auto' : 'none'}>
+          <Animated.View
+            style={{ opacity: closeOpacity, pointerEvents: closeRevealed ? 'auto' : 'none' }}
+          >
             <TouchableOpacity
               style={styles.closeBtn}
               onPress={onClosePress}
