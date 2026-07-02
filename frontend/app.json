@@ -82,10 +82,15 @@
         "expo-build-properties",
         {
           "ios": {
-            "useFrameworks": "static"
+            "useFrameworks": "static",
+            "buildReactNativeFromSource": false,
+            "extraPods": [
+              { "name": "GoogleUtilities", "modular_headers": true }
+            ]
           }
         }
-      ]
+      ],
+      "./plugins/withFirebaseModularFix"
     ],
     "experiments": {
       "typedRoutes": true
