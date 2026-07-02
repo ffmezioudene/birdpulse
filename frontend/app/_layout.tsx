@@ -67,6 +67,40 @@ setTimeout(() => {
 
 bootMark('layout:module-evaluated');
 
+// =============================================================================
+// FIREBASE ANALYTICS — automatic install tracking for Google Ads.
+//
+// Importing @react-native-firebase/analytics at module level is enough to
+// register the native SDK, which in turn fires the automatic `first_open`
+// event on first launch. No manual event logging is added here.
+//
+// Guarded because:
+//   - The RNFB native module doesn't exist on web / Expo Go, so a raw import
+//     would crash the bundle.
+//   - Dynamic require inside a try/catch mirrors the expo-audio pattern
+//     above and keeps a bad native module from stalling boot.
+// =============================================================================
+(async () => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Platform } = require('react-native');
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+      bootMark('firebase:skipped-non-native');
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('@react-native-firebase/app');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const analyticsModule = require('@react-native-firebase/analytics');
+    // Touch the default export so the JS <-> native bridge actually
+    // initializes the SDK (side-effect only; no custom event logging).
+    if (analyticsModule?.default) analyticsModule.default();
+    bootMark('firebase:analytics-initialized');
+  } catch (e) {
+    bootMark('firebase:analytics-initialized', false, e);
+  }
+})();
+
 export default function RootLayout() {
   bootMark('layout:render');
 
