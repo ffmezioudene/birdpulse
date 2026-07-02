@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "13",
+      "bundleIdentifier": "com.fatah.birdpulse",
       "infoPlist": {
         "NSCameraUsageDescription": "Capture photos of birds to identify them",
         "NSMicrophoneUsageDescription": "Record bird calls to identify species",
