@@ -83,9 +83,12 @@
         {
           "ios": {
             "useFrameworks": "static",
-            "buildReactNativeFromSource": false,
             "extraPods": [
-              { "name": "GoogleUtilities", "modular_headers": true }
+              { "name": "GoogleUtilities", "modular_headers": true },
+              { "name": "FirebaseCore", "modular_headers": true },
+              { "name": "FirebaseCoreInternal", "modular_headers": true },
+              { "name": "FirebaseAnalytics", "modular_headers": true },
+              { "name": "FirebaseInstallations", "modular_headers": true }
             ]
           }
         }
