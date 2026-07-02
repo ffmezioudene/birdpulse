@@ -141,39 +141,6 @@ export async function configureRevenueCat(): Promise<boolean> {
     } catch {
       /* silent — ASA token is best-effort */
     }
-    // Firebase App Instance ID → RevenueCat reserved subscriber attribute.
-    // Lets RevenueCat's Firebase integration forward trial / purchase /
-    // conversion events to Google Analytics (and therefore to Google Ads)
-    // against the SAME user ID that Firebase uses on-device. Must run
-    // BEFORE any purchase can occur, so we do it here — immediately after
-    // Purchases.configure() completes. Wrapped in try/catch and guarded
-    // to native only via IS_RC_AVAILABLE (already checked above by
-    // loadPurchases()); Firebase's own JS module is loaded via dynamic
-    // require so the web/Expo Go bundle never touches its native binding.
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const analyticsModule = require('@react-native-firebase/analytics');
-      const getAnalytics = analyticsModule?.default;
-      if (typeof getAnalytics === 'function') {
-        const appInstanceId: string | null =
-          (await getAnalytics().getAppInstanceId()) ?? null;
-        if (appInstanceId) {
-          // v10 of react-native-purchases exposes a dedicated setter that
-          // maps to the "$firebaseAppInstanceId" reserved attribute under
-          // the hood. Prefer it when available; fall back to setAttributes
-          // so older SDKs still work.
-          if (typeof (Purchases as any).setFirebaseAppInstanceID === 'function') {
-            await (Purchases as any).setFirebaseAppInstanceID(appInstanceId);
-          } else {
-            await Purchases.setAttributes({
-              $firebaseAppInstanceId: appInstanceId,
-            });
-          }
-        }
-      }
-    } catch (e) {
-      if (__DEV__) console.warn('[RC] Firebase app-instance-id link failed:', e);
-    }
     configured = true;
     return true;
   } catch (e) {

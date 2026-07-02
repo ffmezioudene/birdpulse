@@ -11,7 +11,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.fatah.birdpulse",
-      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSCameraUsageDescription": "Capture photos of birds to identify them",
         "NSMicrophoneUsageDescription": "Record bird calls to identify species",
@@ -76,24 +75,7 @@
         }
       ],
       "expo-font",
-      "expo-asset",
-      "@react-native-firebase/app",
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "useFrameworks": "static",
-            "extraPods": [
-              { "name": "GoogleUtilities", "modular_headers": true },
-              { "name": "FirebaseCore", "modular_headers": true },
-              { "name": "FirebaseCoreInternal", "modular_headers": true },
-              { "name": "FirebaseAnalytics", "modular_headers": true },
-              { "name": "FirebaseInstallations", "modular_headers": true }
-            ]
-          }
-        }
-      ],
-      "./plugins/withFirebaseModularFix"
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
