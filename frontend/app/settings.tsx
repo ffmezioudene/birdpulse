@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,33 +39,6 @@ export default function Settings() {
     Alert.alert(
       'Free limits reset',
       `Identifications: ${r.ids} · Chats: ${r.chats}. The paywall will trigger again once these are exhausted.`,
-    );
-  };
-
-  const onManageSubscription = async () => {
-    // Apple's official guidance is to deep-link straight to the user's
-    // Subscriptions screen. This works regardless of whether the
-    // RC-hosted Customer Center has been configured in the dashboard,
-    // so users always have a working "Manage / Cancel" entry.
-    if (Platform.OS === 'ios') {
-      Linking.openURL('itms-apps://apps.apple.com/account/subscriptions').catch(() => {});
-      return;
-    }
-    if (Platform.OS === 'android') {
-      // URL built from non-contiguous character codes so the literal
-      // store-brand domain string doesn't appear in the iOS binary
-      // (Apple Guideline 2.3.10 — no references to other mobile platforms).
-      // The runtime-assembled URL is functionally identical to the literal
-      // form on Android, where this branch actually executes.
-      const _h1 = String.fromCharCode(112, 108, 97, 121); // p l a y
-      const _h2 = String.fromCharCode(103, 111, 111, 103, 108, 101); // g o o g l e
-      const url = `https://${_h1}.${_h2}.com/store/account/subscriptions`;
-      Linking.openURL(url).catch(() => {});
-      return;
-    }
-    Alert.alert(
-      'Mobile-only',
-      'Subscription management is available in the BirdPulse mobile app.',
     );
   };
 
@@ -123,12 +96,6 @@ export default function Settings() {
           </TouchableOpacity>
 
           <Section title="Subscription">
-            <Row
-              icon="card-outline"
-              label="Manage Subscription"
-              onPress={onManageSubscription}
-              testID="settings-manage-subscription"
-            />
             <Row
               icon="refresh-outline"
               label={restoring ? 'Restoring…' : 'Restore Purchases'}
